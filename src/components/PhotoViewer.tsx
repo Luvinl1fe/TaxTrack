@@ -160,8 +160,12 @@ const styles = StyleSheet.create({
   // Fixed black regardless of theme: a light surround changes how the eye
   // reads a faded receipt, and every photo app does the same.
   backdrop: { flex: 1, backgroundColor: '#000' },
-  canvas: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  image: { width: '100%', height: '100%' },
+  // Plain `flex: 1` with no centering. Centering here sets the child's
+  // cross-axis size to auto, which collapses a percentage-sized image to zero
+  // — the image is there, measuring 0×0, on a black background.
+  // `contentFit="contain"` does the centring instead.
+  canvas: { flex: 1 },
+  image: { flex: 1 },
   close: {
     position: 'absolute',
     right: 16,
