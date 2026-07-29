@@ -9,6 +9,14 @@
  * calendar date can shift it a day in either direction depending on the
  * device's timezone — which is exactly how a 30 June receipt ends up filed in
  * the wrong tax year. Strings sidestep the problem instead of managing it.
+ *
+ * Known limitation, accepted deliberately: `currentFy()` reads the device's
+ * local calendar date, and Australian timezones span three hours. A user in
+ * Perth just before midnight on 30 June is already on 1 July in Sydney, so two
+ * users pressing "add receipt" at the same instant can land in different
+ * financial years. The window is a few hours a year, the device's own date is
+ * what the user sees on their lock screen, and the date is editable on every
+ * entry — so this is left as-is rather than engineered around.
  */
 
 /** A calendar date in `YYYY-MM-DD` form. */

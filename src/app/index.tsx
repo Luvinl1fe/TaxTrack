@@ -54,10 +54,21 @@ export default function Index() {
             />
             <RateRow fy={fy} rate="wfhCentsPerHour" label="WFH per hour" colors={colors} />
             <Row
-              label="Evidence threshold"
-              value={formatCents(rates.noReceiptThresholdCents)}
+              label="Substantiation threshold"
+              value={formatCents(rates.substantiationThresholdCents)}
               colors={colors}
             />
+            <Text style={[styles.note, { color: colors.text }]}>
+              Aggregate across a year&rsquo;s claims. Excludes car expenses.
+            </Text>
+            <Row
+              label="Immediate write-off"
+              value={formatCents(rates.immediateWriteOffThresholdCents)}
+              colors={colors}
+            />
+            <Text style={[styles.note, { color: colors.text }]}>
+              Per individual asset. Depreciation is Phase 3.
+            </Text>
           </>
         )}
       </Section>
@@ -178,6 +189,11 @@ const styles = StyleSheet.create({
   warning: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  note: {
+    fontSize: 12,
+    opacity: 0.45,
+    marginTop: -6,
   },
   disclaimer: {
     fontSize: 12,
