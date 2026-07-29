@@ -103,6 +103,7 @@ CREATE TABLE receipts (
   work_use_percent  INTEGER NOT NULL DEFAULT 100,
   notes             TEXT,
   photo_uri         TEXT,               -- file:// path in app documents dir
+  substantiation_exemption TEXT,        -- s 900-35(3) per-expense exclusion, null = counts
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL,      -- sync: conflict resolution
   deleted_at        TEXT,               -- sync: soft-delete tombstone
@@ -114,7 +115,9 @@ CREATE INDEX idx_receipts_fy ON receipts (financial_year, deleted_at);
 CREATE INDEX idx_receipts_category ON receipts (category_id);
 ```
 
-`wfh_logs` (date, hours, fy) and `vehicle_trips` (date, km, purpose, vehicle_label, fy) follow the same shape and carry the same five trailing sync columns.
+`wfh_logs` (log_date, hours, fy) and `vehicle_trips` (trip_date, kilometres, purpose, vehicle_label, fy) follow the same shape and carry the same five trailing sync columns. A `categories` table mirrors `src/domain/categories.ts` so totals can be grouped in SQL, and so a receipt whose category a later build drops still resolves to a name rather than a bare id.
+
+**Migrations are an append-only list** in `src/db/schema.ts`, with the applied count tracked in SQLite's `user_version`. Never edit or reorder an existing entry — a device that already ran it won't re-run it, so an edit produces two different schemas in the wild.
 
 **Three decisions that matter later:**
 
@@ -139,6 +142,8 @@ This is used by nearly every screen, every query, and both calculators. **It sho
 
 Store dates as plain `YYYY-MM-DD` strings, not timestamps, to sidestep timezone drift entirely.
 
+**Known limitation (accepted):** `currentFy()` reads the device's local date, and Australian timezones span three hours. Within a few hours of midnight on 30 June / 1 July, users in different states can land in different financial years. Left as-is — the device's date is what the user sees on their own lock screen, and the date is editable on every entry.
+
 ---
 
 ## 6. ATO rules layer ⚠️
@@ -149,10 +154,11 @@ The cents-per-km rate, the WFH fixed rate and the $300 threshold all change betw
 
 ```ts
 export interface FyRates {
-  wfhCentsPerHour: number | null;      // null = not yet published/confirmed
+  wfhCentsPerHour: number | null;         // null = not yet published
   centsPerKm: number | null;
   kmCapPerCar: number;
-  noReceiptThresholdCents: number;
+  substantiationThresholdCents: number;   // aggregate evidence test
+  immediateWriteOffThresholdCents: number; // per-asset depreciation test
 }
 
 export const ATO_RATES: Record<number, FyRates> = { /* keyed by FY start year */ };
@@ -162,7 +168,7 @@ export const ATO_RATES: Record<number, FyRates> = { /* keyed by FY start year */
 
 | Rule | Value | Status |
 | --- | --- | --- |
-| Cents per km — **2026–27** | **91c/km** (89c base + a one-off 2c uplift for 2026–27) | ✅ Confirmed |
+| Cents per km — **2026–27** | **91c/km** (89c base + a one-off 2c uplift for 2026–27) | ✅ Confirmed — **legislative instrument LI 2026/19** |
 | Cents per km — 2024–25 & 2025–26 | **88c/km** | ✅ Confirmed |
 | Cents per km — cap | **5,000 km per car, per year** | ✅ Confirmed |
 | WFH fixed rate — 2024–25 & 2025–26 | **70c per work hour** | ✅ Confirmed |
@@ -181,12 +187,27 @@ Fires when a user's total work-related claims for the FY approach or cross $300 
 
 ⚠️ **There are two unrelated $300 rules and they must not be conflated:**
 
-| Rule | What it means | Where it lives |
+| Rule | Applies to | Field |
 | --- | --- | --- |
-| $300 evidence threshold | No written evidence required if *total work-related claims* for the year are ≤ $300 | `noReceiptThresholdCents` — this app, Phase 1 |
-| $300 immediate deduction | A *depreciating asset* costing ≤ $300 is deducted in full that year instead of declining in value over its effective life | Depreciation — Phase 3, deliberately not modelled |
+| Substantiation threshold | The **aggregate** of a year's claims across in-scope categories. At or below it, a record of how the claim was worked out suffices; above it, full written evidence is required. | `substantiationThresholdCents` — Phase 1 |
+| Immediate write-off | An **individual asset**. At or below it, deduct in full this year; above it, write off over the asset's effective life. | `immediateWriteOffThresholdCents` — labelled now, depreciation is Phase 3 |
 
-Same number, different rules, different triggers. Any in-app copy about "$300" must make clear which one it means.
+Same figure, unrelated rules, different units — one sums receipts, the other tests a single purchase. They are **separate fields specifically so no calculator can reach for "the $300 one"** and silently apply the wrong test. Any in-app copy mentioning $300 must say which rule it means.
+
+**It is a cliff, not an excess.** Over $300, *every* work expense must be substantiated — not merely the amount above $300. In-app copy must say this; "you can claim $300 without receipts" is the misreading the feature exists to prevent.
+
+**Scope comes from ITAA 1997 s 900-35 and TR 1999/10**, and covers *work expenses* generally — it is **not** a D5-only rule. Clothing (D3) and self-education (D4) are in scope. The statutory exclusions are:
+
+| Exclusion | Modelled as | Why |
+| --- | --- | --- |
+| Car expenses | Category flag (`car` → `false`) | Every car expense is excluded; own rules under cents-per-km and logbook |
+| Travel allowance expenses | Per receipt | Narrower than category D2 — ordinary travel *does* count; only allowance-covered travel is excluded |
+| Meal allowance expenses | Per receipt | Same reason |
+| Award transport payments | Per receipt | s 900-35(3) |
+
+Three of the four are properties of the *individual expense*, not its category: the same flight counts or doesn't depending on whether an allowance covered it. So `Receipt.substantiationExemption` carries `'travel_allowance' | 'meal_allowance' | 'award_transport' | null`, and it overrides the category default. D9 gifts and D10 tax affairs are excluded as non-work expenses.
+
+Implemented in `src/domain/substantiation.ts`.
 
 ### Disclaimer
 
@@ -277,4 +298,5 @@ UI gets manual testing on-device via Expo Go. Component and E2E tests are not wo
 
 1. **The 2026–27 WFH fixed rate is unpublished** (§6). Confirmed against the ATO's Fixed rate method page (last updated 8 June 2026), which lists rates only through 2025–26. This is blocked on the ATO, not on us — re-check before the WFH calculator ships, and treat it as a release gate rather than a research task.
 2. **Monetisation** — carried over from the pitch: subscription vs one-off unlock, and how price-sensitive a casual PAYG employee is. Doesn't block Phase 1; free tier is all of Phase 1 either way.
-3. **Category list** — the ATO category dropdown needs a final list agreed up front, since it's baked into the schema as seed data and changing it later means migrating existing receipts.
+3. ~~**Category list**~~ — **Resolved.** 14 categories approved, D1–D10 mapping verified against the ATO's official label list. D5 is split eight ways (a UX choice, not an ATO rule) so category totals are usable. D6/D7/D8 are defined but marked `phase: 3` and filtered out, so enabling them later is a flag flip rather than a migration. See `src/domain/categories.ts`.
+4. **Known limitation — FY boundary across Australian timezones.** `currentFy()` uses the device's local date, and AU spans three hours. Within a few hours of midnight on 30 June / 1 July, two users in different states can land in different financial years. Accepted rather than engineered around: the device date is what the user sees on their lock screen, and the date is editable on every entry.

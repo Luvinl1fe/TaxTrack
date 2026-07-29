@@ -20,23 +20,33 @@ describe('ATO_RATES', () => {
     }
   });
 
-  it('holds the no-receipt threshold at $300 in integer cents', () => {
+  it('holds both $300 thresholds in integer cents', () => {
     for (const fy of ALL_FYS) {
-      expect(ATO_RATES[fy].noReceiptThresholdCents).toBe(30_000);
+      expect(ATO_RATES[fy].substantiationThresholdCents).toBe(30_000);
+      expect(ATO_RATES[fy].immediateWriteOffThresholdCents).toBe(30_000);
     }
+  });
+
+  it('keeps the two $300 rules as separate fields', () => {
+    // Same figure, unrelated rules: one is an aggregate evidence test, the
+    // other a per-asset depreciation test. Collapsing them into one field is
+    // how a calculator ends up applying the wrong rule.
+    const rates = ATO_RATES[2026];
+    expect(Object.keys(rates)).toContain('substantiationThresholdCents');
+    expect(Object.keys(rates)).toContain('immediateWriteOffThresholdCents');
   });
 
   it('stores every rate as whole cents, never dollars', () => {
     // 0.7 instead of 70 would understate a WFH claim by a factor of 100.
     for (const fy of ALL_FYS) {
-      const { wfhCentsPerHour, centsPerKm, noReceiptThresholdCents } = ATO_RATES[fy];
+      const { wfhCentsPerHour, centsPerKm, substantiationThresholdCents } = ATO_RATES[fy];
       for (const value of [wfhCentsPerHour, centsPerKm]) {
         if (value !== null) {
           expect(Number.isInteger(value)).toBe(true);
           expect(value).toBeGreaterThan(1);
         }
       }
-      expect(Number.isInteger(noReceiptThresholdCents)).toBe(true);
+      expect(Number.isInteger(substantiationThresholdCents)).toBe(true);
     }
   });
 
