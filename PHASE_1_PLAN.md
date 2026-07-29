@@ -115,7 +115,9 @@ CREATE INDEX idx_receipts_fy ON receipts (financial_year, deleted_at);
 CREATE INDEX idx_receipts_category ON receipts (category_id);
 ```
 
-`wfh_logs` (date, hours, fy) and `vehicle_trips` (date, km, purpose, vehicle_label, fy) follow the same shape and carry the same five trailing sync columns.
+`wfh_logs` (log_date, hours, fy) and `vehicle_trips` (trip_date, kilometres, purpose, vehicle_label, fy) follow the same shape and carry the same five trailing sync columns. A `categories` table mirrors `src/domain/categories.ts` so totals can be grouped in SQL, and so a receipt whose category a later build drops still resolves to a name rather than a bare id.
+
+**Migrations are an append-only list** in `src/db/schema.ts`, with the applied count tracked in SQLite's `user_version`. Never edit or reorder an existing entry — a device that already ran it won't re-run it, so an edit produces two different schemas in the wild.
 
 **Three decisions that matter later:**
 
