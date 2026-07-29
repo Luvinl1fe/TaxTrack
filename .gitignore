@@ -6,20 +6,24 @@
 
 # Node
 node_modules/
-npm-debug.log*
-yarn-error.log*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
 .pnpm-debug.log*
 
-# Expo
+# Expo / Metro
 .expo/
 .expo-shared/
 dist/
 web-build/
 expo-env.d.ts
+.metro-health-check*
+example/
 
 # Native build output (if we ever eject to a dev build)
 ios/
 android/
+.kotlin/
 *.jks
 *.p8
 *.p12
@@ -33,6 +37,10 @@ android/
 !.env.example
 google-services.json
 GoogleService-Info.plist
+*.pem
+
+# TypeScript
+*.tsbuildinfo
 
 # Testing
 coverage/
