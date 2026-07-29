@@ -1,6 +1,7 @@
 import {
   currentFy,
   daysInMonth,
+  formatDateAu,
   fyBounds,
   fyLabel,
   fyStartYear,
@@ -39,6 +40,34 @@ describe('fyStartYear', () => {
 
   it('handles 29 February in a leap year', () => {
     expect(fyStartYear('2028-02-29')).toBe(2027);
+  });
+});
+
+describe('formatDateAu', () => {
+  it.each([
+    ['2026-07-01', '01/07/26'],
+    ['2027-06-30', '30/06/27'],
+    ['2026-12-25', '25/12/26'],
+  ])('%s renders day-first as %s', (iso, expected) => {
+    expect(formatDateAu(iso)).toBe(expected);
+  });
+
+  it('pads single-digit days and months', () => {
+    expect(formatDateAu('2026-03-05')).toBe('05/03/26');
+  });
+
+  // The day and month must not be transposed: 03/07 and 07/03 are both valid
+  // dates, so a swap is silent and lands the receipt in the wrong month.
+  it('puts the day first, not the month', () => {
+    expect(formatDateAu('2026-07-03')).toBe('03/07/26');
+  });
+
+  it('pads a year ending in a single digit', () => {
+    expect(formatDateAu('2005-01-09')).toBe('09/01/05');
+  });
+
+  it('rejects a malformed date rather than rendering nonsense', () => {
+    expect(() => formatDateAu('01/07/2026')).toThrow(RangeError);
   });
 });
 

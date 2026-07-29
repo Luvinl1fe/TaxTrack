@@ -93,6 +93,23 @@ export function toIsoDate(date: Date): IsoDate {
 }
 
 /**
+ * Format a stored date for display as `DD/MM/YY`.
+ *
+ * Day-first is the Australian convention, and the only one an ATO form or a
+ * local receipt ever uses. Storage stays `YYYY-MM-DD` — this is a display
+ * concern and the conversion happens at the edge, never in the database.
+ *
+ * Built from the parsed parts rather than `toLocaleDateString`, which varies
+ * with the device's locale: a phone set to US English would render 03/07/26
+ * as 7 March instead of 3 July.
+ */
+export function formatDateAu(date: IsoDate): string {
+  const { year, month, day } = parseIsoDate(date);
+  const shortYear = String(year % 100).padStart(2, '0');
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${shortYear}`;
+}
+
+/**
  * The financial year a date falls in, as its start year.
  *
  * July onward belongs to the year it starts in, so 2026-07-01 → 2026, while

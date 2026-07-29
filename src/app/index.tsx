@@ -9,7 +9,7 @@ import { ACTIVE_CATEGORIES, categoryById } from '@/domain/categories';
 import { createReceipt } from '@/domain/factories';
 import { substantiationMessage, substantiationStatus } from '@/domain/substantiation';
 import type { CategoryTotal, Receipt } from '@/domain/types';
-import { currentFy, fyBounds, fyLabel, toIsoDate } from '@/lib/financialYear';
+import { currentFy, formatDateAu, fyBounds, fyLabel, toIsoDate } from '@/lib/financialYear';
 
 /**
  * Temporary development screen.
@@ -106,7 +106,7 @@ export default function Index() {
       contentContainerStyle={styles.content}>
       <Text style={[styles.title, { color: colors.text }]}>{fyLabel(fy)}</Text>
       <Text style={[styles.caption, { color: colors.text }]}>
-        {bounds.start} to {bounds.end}
+        {formatDateAu(bounds.start)} to {formatDateAu(bounds.end)}
       </Text>
 
       {error !== null && (
@@ -213,7 +213,7 @@ export default function Index() {
                 </Text>
                 <Text style={[styles.note, { color: colors.text }]} numberOfLines={1}>
                   {categoryById(receipt.categoryId)?.name ?? receipt.categoryId} ·{' '}
-                  {receipt.purchaseDate}
+                  {formatDateAu(receipt.purchaseDate)}
                 </Text>
               </View>
               <Text style={[styles.rowValue, styles.receiptAmount, { color: colors.text }]}>
