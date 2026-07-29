@@ -1,10 +1,13 @@
+import { useTheme } from '@react-navigation/native';
 import { StyleSheet, Text, View } from 'react-native';
 
 export default function Index() {
+  const { colors } = useTheme();
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>TaxTrack</Text>
-      <Text style={styles.subtitle}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>TaxTrack</Text>
+      <Text style={[styles.subtitle, { color: colors.text }]}>
         Scaffold is running. Next up: the financial-year module.
       </Text>
     </View>
