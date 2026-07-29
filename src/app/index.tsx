@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getRate, rateUnavailableMessage, ratesForFy, type NullableRate } from '@/config/atoRates';
 import { newId, receiptRepository } from '@/db/receiptRepository';
@@ -68,10 +69,31 @@ export default function Index() {
     }
   }, [refresh]);
 
-  const removeReceipt = useCallback(
-    async (id: string) => {
-      await receiptRepository.softDelete(id);
-      await refresh();
+  // Deleting is destructive and irreversible from the user's point of view, so
+  // it asks first. The prompt names the receipt rather than saying "this item".
+  const confirmDelete = useCallback(
+    (receipt: Receipt) => {
+      Alert.alert(
+        'Delete receipt?',
+        `${receipt.merchant} · ${formatCents(receipt.amountCents)} will be removed from your ${fyLabel(receipt.financialYear)} records.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                try {
+                  await receiptRepository.softDelete(receipt.id);
+                  await refresh();
+                } catch (cause) {
+                  setError(cause instanceof Error ? cause.message : String(cause));
+                }
+              })();
+            },
+          },
+        ],
+      );
     },
     [refresh],
   );
@@ -182,10 +204,7 @@ export default function Index() {
       {receipts !== null && receipts.length > 0 && (
         <Section title="Receipts" colors={colors}>
           {receipts.map((receipt) => (
-            <Pressable
-              key={receipt.id}
-              onLongPress={() => void removeReceipt(receipt.id)}
-              style={styles.row}>
+            <View key={receipt.id} style={styles.row}>
               <View style={styles.receiptText}>
                 <Text style={[styles.rowLabel, { color: colors.text }]}>{receipt.merchant}</Text>
                 <Text style={[styles.note, { color: colors.text }]}>
@@ -196,9 +215,9 @@ export default function Index() {
               <Text style={[styles.rowValue, { color: colors.text }]}>
                 {formatCents(receipt.amountCents)}
               </Text>
-            </Pressable>
+              <DeleteButton receipt={receipt} onPress={confirmDelete} colors={colors} />
+            </View>
           ))}
-          <Text style={[styles.note, { color: colors.text }]}>Long-press a receipt to delete it.</Text>
         </Section>
       )}
 
@@ -236,6 +255,35 @@ function Row({ label, value, colors }: { label: string; value: string; colors: C
       <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
       <Text style={[styles.rowValue, { color: colors.text }]}>{value}</Text>
     </View>
+  );
+}
+
+/**
+ * Visible delete affordance on a receipt row.
+ *
+ * A discoverable control, not a hidden gesture: nothing on screen can tell a
+ * user that a long-press deletes, so they either never find it or trigger it by
+ * accident. `hitSlop` keeps the tap target at the ~44pt Apple/Android minimum
+ * while the icon itself stays small enough not to compete with the amount.
+ */
+function DeleteButton({
+  receipt,
+  onPress,
+  colors,
+}: {
+  receipt: Receipt;
+  onPress: (receipt: Receipt) => void;
+  colors: Colors;
+}) {
+  return (
+    <Pressable
+      onPress={() => onPress(receipt)}
+      hitSlop={12}
+      accessibilityRole="button"
+      accessibilityLabel={`Delete receipt from ${receipt.merchant}`}
+      style={({ pressed }) => [styles.deleteButton, { opacity: pressed ? 0.5 : 1 }]}>
+      <Ionicons name="trash-outline" size={18} color={colors.notification} />
+    </Pressable>
   );
 }
 
@@ -298,6 +346,7 @@ const styles = StyleSheet.create({
   receiptText: { flexShrink: 1, gap: 2 },
   rowLabel: { fontSize: 15, opacity: 0.7 },
   rowValue: { fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  deleteButton: { paddingVertical: 4, paddingLeft: 4 },
   unavailable: { gap: 4 },
   warning: { fontSize: 13, lineHeight: 18 },
   note: { fontSize: 12, opacity: 0.45, lineHeight: 16 },
