@@ -103,6 +103,7 @@ CREATE TABLE receipts (
   work_use_percent  INTEGER NOT NULL DEFAULT 100,
   notes             TEXT,
   photo_uri         TEXT,               -- file:// path in app documents dir
+  substantiation_exemption TEXT,        -- s 900-35(3) per-expense exclusion, null = counts
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL,      -- sync: conflict resolution
   deleted_at        TEXT,               -- sync: soft-delete tombstone
@@ -191,7 +192,20 @@ Fires when a user's total work-related claims for the FY approach or cross $300 
 
 Same figure, unrelated rules, different units — one sums receipts, the other tests a single purchase. They are **separate fields specifically so no calculator can reach for "the $300 one"** and silently apply the wrong test. Any in-app copy mentioning $300 must say which rule it means.
 
-**Scope is per-category, not global.** Which categories count toward the substantiation threshold is a `countsTowardSubstantiationThreshold` flag on each category in `src/domain/categories.ts`, not a blanket sum over all receipts. Car expenses are excluded — they have their own substantiation rules under the cents-per-km and logbook methods — as are D9 gifts and D10 tax-affairs, which aren't work expenses. The $300 nudge must sum only flagged categories.
+**It is a cliff, not an excess.** Over $300, *every* work expense must be substantiated — not merely the amount above $300. In-app copy must say this; "you can claim $300 without receipts" is the misreading the feature exists to prevent.
+
+**Scope comes from ITAA 1997 s 900-35 and TR 1999/10**, and covers *work expenses* generally — it is **not** a D5-only rule. Clothing (D3) and self-education (D4) are in scope. The statutory exclusions are:
+
+| Exclusion | Modelled as | Why |
+| --- | --- | --- |
+| Car expenses | Category flag (`car` → `false`) | Every car expense is excluded; own rules under cents-per-km and logbook |
+| Travel allowance expenses | Per receipt | Narrower than category D2 — ordinary travel *does* count; only allowance-covered travel is excluded |
+| Meal allowance expenses | Per receipt | Same reason |
+| Award transport payments | Per receipt | s 900-35(3) |
+
+Three of the four are properties of the *individual expense*, not its category: the same flight counts or doesn't depending on whether an allowance covered it. So `Receipt.substantiationExemption` carries `'travel_allowance' | 'meal_allowance' | 'award_transport' | null`, and it overrides the category default. D9 gifts and D10 tax affairs are excluded as non-work expenses.
+
+Implemented in `src/domain/substantiation.ts`.
 
 ### Disclaimer
 

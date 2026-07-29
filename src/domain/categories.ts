@@ -26,11 +26,17 @@ export interface Category {
    * Whether this category's spend counts toward the aggregate substantiation
    * threshold in `FyRates.substantiationThresholdCents`.
    *
-   * Not every deduction is in scope for that test — car expenses are the
-   * clearest exclusion, having their own substantiation rules under the
-   * cents-per-km and logbook methods. Keeping this per-category means the
-   * $300 nudge sums only what the rule actually covers, and that adjusting
-   * the scope later is editing flags rather than unpicking calculator logic.
+   * Scope comes from ITAA 1997 s 900-35 and TR 1999/10: the test covers *work
+   * expenses* generally, excluding car expenses, travel allowance expenses,
+   * meal allowance expenses, and award transport payments (s 900-35(3)). It is
+   * not a D5-only rule — clothing and self-education are in scope.
+   *
+   * Note the threshold is a cliff, not an excess: over $300, *all* work
+   * expenses must be substantiated, not just the amount above $300.
+   *
+   * This is the *category-level default*. Three of the four exclusions are
+   * properties of an individual expense rather than its category — see
+   * `Receipt.substantiationExemption`.
    */
   countsTowardSubstantiationThreshold: boolean;
   /**
@@ -58,6 +64,12 @@ export const CATEGORIES: readonly Category[] = [
     id: 'travel',
     name: 'Travel',
     myTaxLabel: 'D2',
+    // Counts by default. The s 900-35 exclusion is narrower than the category:
+    // it covers *travel allowance* and *meal allowance* expenses, which have
+    // their own reasonable-amounts exception — not all D2 travel. Ordinary
+    // work travel not covered by an allowance is in scope, and is the common
+    // case, so the category default is `true` and the exception is recorded
+    // per receipt via `substantiationExemption`.
     countsTowardSubstantiationThreshold: true,
     entryKind: 'receipt',
     phase: 1,
