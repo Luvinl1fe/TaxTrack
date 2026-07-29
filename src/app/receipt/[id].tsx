@@ -30,6 +30,7 @@ import {
 
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { FormField } from '@/components/FormField';
+import { PhotoViewer } from '@/components/PhotoViewer';
 import { newId, receiptRepository } from '@/db/receiptRepository';
 import { categoryById } from '@/domain/categories';
 import { createReceipt } from '@/domain/factories';
@@ -69,6 +70,7 @@ export default function ReceiptFormScreen() {
   const [saving, setSaving] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   useEffect(() => {
     if (isNew) return;
@@ -354,7 +356,18 @@ export default function ReceiptFormScreen() {
         <FormField label="Photo" hint="A photo of the receipt is your written evidence.">
           {photoUri !== null && (
             <View style={styles.photoWrapper}>
-              <Image source={{ uri: photoUri }} style={styles.photo} contentFit="cover" />
+              <Pressable
+                onPress={() => setViewerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="View photo full screen"
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+                <Image source={{ uri: photoUri }} style={styles.photo} contentFit="cover" />
+                {/* A thumbnail gives no sign it can be opened, so it says so. */}
+                <View style={styles.expandBadge}>
+                  <Ionicons name="expand-outline" size={14} color="#fff" />
+                  <Text style={styles.expandLabel}>Tap to enlarge</Text>
+                </View>
+              </Pressable>
               <Pressable
                 onPress={() => setPhotoUri(null)}
                 hitSlop={12}
@@ -423,6 +436,8 @@ export default function ReceiptFormScreen() {
         onSelect={(categoryId) => update('categoryId', categoryId)}
         onClose={() => setCategoryOpen(false)}
       />
+
+      <PhotoViewer uri={photoUri} visible={viewerOpen} onClose={() => setViewerOpen(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -469,6 +484,21 @@ const styles = StyleSheet.create({
   percentSign: { fontSize: 16, opacity: 0.5 },
   photoWrapper: { alignSelf: 'flex-start' },
   photo: { width: 140, height: 180, borderRadius: 10 },
+  expandBadge: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  expandLabel: { color: '#fff', fontSize: 11, fontWeight: '600' },
   removePhoto: {
     position: 'absolute',
     top: -8,
