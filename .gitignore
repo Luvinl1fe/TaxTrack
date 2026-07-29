@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build output (if we ever eject to a dev build)
+ios/
+android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Environment & secrets — Firebase config, API keys
+.env
+.env.*
+!.env.example
+google-services.json
+GoogleService-Info.plist
+
+# Testing
+coverage/
+
+# Editors
+.idea/
+*.swp
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Claude Code local settings
+.claude/settings.local.json
