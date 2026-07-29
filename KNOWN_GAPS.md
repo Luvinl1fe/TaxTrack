@@ -18,6 +18,61 @@ it) — never by quietly deleting the row.
 
 ## Open
 
+### 🟠 Deleting a receipt leaves its photo on disk
+
+**Found:** milestone 4.
+
+`softDelete` tombstones the row but nothing removes the file under
+`Documents/receipts/`. Photos are the largest thing the app writes, so a user
+who adds and deletes receipts over a year accumulates storage they can't see or
+reclaim.
+
+**Why it exists:** deletes are soft so they can replicate (see milestone 3). The
+row still references the photo, and a future sync could restore it — so
+deleting the file at tombstone time would destroy evidence the user might get
+back.
+
+**How to close:** a cleanup pass that removes photos for rows tombstoned longer
+than the sync retention window. Needs the sync design from milestone 8 to know
+what that window is.
+
+---
+
+### 🟠 No screen has an automated test
+
+**Found:** milestone 4.
+
+Validation (`receiptForm.ts`), money and the FY module are covered. The screens
+that use them are not: nothing verifies that a save actually reaches the
+repository, that the form loads an existing receipt into its fields, or that
+returning from the form refreshes the list.
+
+**Why it exists:** a deliberate MVP trade-off — `PHASE_1_PLAN.md` §10 calls for
+real unit tests on logic and minimal UI testing. Form logic was extracted into a
+pure module specifically so the untested surface is thin.
+
+**How to close:** `@testing-library/react-native` on the receipt form, if the
+screens start carrying logic of their own rather than delegating to modules.
+
+---
+
+### 🟡 Photo capture can't be verified in Jest
+
+**Found:** milestone 4.
+
+`src/lib/photos.ts` has no tests. `expo-file-system` and `expo-image-picker` are
+native modules and don't load in Jest's Node environment, same constraint as
+`expo-sqlite`.
+
+**Verified instead by:** the milestone 4 done-when check — attach a photo,
+force-quit, reopen, photo still renders.
+
+**Watch for:** the cache-to-documents copy is the part that matters. If it ever
+regresses, photos vanish weeks later rather than immediately, so a manual check
+right after saving would not catch it.
+
+---
+
 ### 🟠 The repositories have no automated tests
 
 **Found:** milestone 3.
