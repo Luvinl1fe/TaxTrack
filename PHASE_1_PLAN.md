@@ -163,6 +163,7 @@ export const ATO_RATES: Record<number, FyRates> = { /* keyed by FY start year */
 | Rule | Value | Status |
 | --- | --- | --- |
 | Cents per km — **2026–27** | **91c/km** (89c base + a one-off 2c uplift for 2026–27) | ✅ Confirmed |
+| Cents per km — 2024–25 & 2025–26 | **88c/km** | ✅ Confirmed |
 | Cents per km — cap | **5,000 km per car, per year** | ✅ Confirmed |
 | WFH fixed rate — 2024–25 & 2025–26 | **70c per work hour** | ✅ Confirmed |
 | WFH fixed rate — **2026–27** | — | ❌ **UNCONFIRMED — must verify before shipping** |
