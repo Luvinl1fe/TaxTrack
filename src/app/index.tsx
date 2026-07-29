@@ -206,14 +206,18 @@ export default function Index() {
           {receipts.map((receipt) => (
             <View key={receipt.id} style={styles.receiptRow}>
               <View style={styles.receiptText}>
-                <Text
-                  style={[styles.rowLabel, { color: colors.text }]}
-                  numberOfLines={1}>
-                  {receipt.merchant}
-                </Text>
+                <View style={styles.receiptHeading}>
+                  <Text
+                    style={[styles.rowLabel, styles.merchant, { color: colors.text }]}
+                    numberOfLines={1}>
+                    {receipt.merchant}
+                  </Text>
+                  <Text style={[styles.note, { color: colors.text }]}>
+                    {formatDateAu(receipt.purchaseDate)}
+                  </Text>
+                </View>
                 <Text style={[styles.note, { color: colors.text }]} numberOfLines={1}>
-                  {categoryById(receipt.categoryId)?.name ?? receipt.categoryId} ·{' '}
-                  {formatDateAu(receipt.purchaseDate)}
+                  {categoryById(receipt.categoryId)?.name ?? receipt.categoryId}
                 </Text>
               </View>
               <Text style={[styles.rowValue, styles.receiptAmount, { color: colors.text }]}>
@@ -351,6 +355,12 @@ const styles = StyleSheet.create({
   // flex: 1 lets the merchant name absorb the leftover width, so the amount
   // and bin sit in fixed columns instead of drifting with the name's length.
   receiptText: { flex: 1, gap: 2, paddingRight: 12 },
+  // baseline alignment so the date sits on the merchant's text baseline
+  // rather than floating in the middle of its larger line box.
+  receiptHeading: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  // flexShrink, not flex: the date keeps its natural width and a long merchant
+  // name truncates instead of pushing the date off the row.
+  merchant: { flexShrink: 1 },
   rowLabel: { fontSize: 15, opacity: 0.7 },
   rowValue: { fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
   // Right-aligned over a fixed width: with tabular figures the decimal points
