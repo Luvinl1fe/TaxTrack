@@ -204,15 +204,19 @@ export default function Index() {
       {receipts !== null && receipts.length > 0 && (
         <Section title="Receipts" colors={colors}>
           {receipts.map((receipt) => (
-            <View key={receipt.id} style={styles.row}>
+            <View key={receipt.id} style={styles.receiptRow}>
               <View style={styles.receiptText}>
-                <Text style={[styles.rowLabel, { color: colors.text }]}>{receipt.merchant}</Text>
-                <Text style={[styles.note, { color: colors.text }]}>
+                <Text
+                  style={[styles.rowLabel, { color: colors.text }]}
+                  numberOfLines={1}>
+                  {receipt.merchant}
+                </Text>
+                <Text style={[styles.note, { color: colors.text }]} numberOfLines={1}>
                   {categoryById(receipt.categoryId)?.name ?? receipt.categoryId} ·{' '}
                   {receipt.purchaseDate}
                 </Text>
               </View>
-              <Text style={[styles.rowValue, { color: colors.text }]}>
+              <Text style={[styles.rowValue, styles.receiptAmount, { color: colors.text }]}>
                 {formatCents(receipt.amountCents)}
               </Text>
               <DeleteButton receipt={receipt} onPress={confirmDelete} colors={colors} />
@@ -343,10 +347,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  receiptText: { flexShrink: 1, gap: 2 },
+  receiptRow: { flexDirection: 'row', alignItems: 'center' },
+  // flex: 1 lets the merchant name absorb the leftover width, so the amount
+  // and bin sit in fixed columns instead of drifting with the name's length.
+  receiptText: { flex: 1, gap: 2, paddingRight: 12 },
   rowLabel: { fontSize: 15, opacity: 0.7 },
   rowValue: { fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  deleteButton: { paddingVertical: 4, paddingLeft: 4 },
+  // Right-aligned over a fixed width: with tabular figures the decimal points
+  // stack, so the column scans as a list of numbers rather than ragged text.
+  receiptAmount: { minWidth: 84, textAlign: 'right' },
+  deleteButton: { width: 32, alignItems: 'flex-end', paddingVertical: 6 },
   unavailable: { gap: 4 },
   warning: { fontSize: 13, lineHeight: 18 },
   note: { fontSize: 12, opacity: 0.45, lineHeight: 16 },
