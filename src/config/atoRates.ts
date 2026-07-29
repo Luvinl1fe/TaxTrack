@@ -31,6 +31,12 @@ export interface FyRates {
    * This is an *evidence* threshold, not a cap on what may be claimed, and the
    * taxpayer must still be able to show how the claim was worked out. Wording
    * it as "claim $300 without receipts" is a common and costly misreading.
+   *
+   * Not to be confused with the other $300 rule: a depreciating asset costing
+   * $300 or less can be deducted immediately rather than declining in value
+   * over its effective life. Same number, unrelated rule, and conflating them
+   * would give users wrong advice. That one belongs to depreciation, which is
+   * Phase 3 — it is deliberately not modelled here.
    */
   noReceiptThresholdCents: number;
 }

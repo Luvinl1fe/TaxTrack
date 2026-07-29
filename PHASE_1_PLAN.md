@@ -169,13 +169,24 @@ export const ATO_RATES: Record<number, FyRates> = { /* keyed by FY start year */
 | WFH fixed rate — **2026–27** | — | ❌ **UNCONFIRMED — must verify before shipping** |
 | No-receipt threshold | Written evidence not required if total work-related claims are **≤ $300** — but you must still be able to show how the claim was worked out | ✅ Confirmed, long-standing |
 
-**The 2026–27 WFH rate could not be verified.** `ato.gov.au` returns HTTP 403 to automated requests, and search results only listed published rates through 2025–26. It is recorded as `null` rather than carrying a guessed number into a tax app. **A human must confirm it against ato.gov.au and fill it in.**
+**The 2026–27 WFH rate does not exist yet.** The ATO's own "Fixed rate method" page, checked against its *last updated 8 June 2026* revision, lists 70c for 2024–25 and 2025–26, 67c for 2022–23 and 2023–24, and 52c for 2020–21 and 2021–22 — and stops there. There is no 2026–27 figure, and that revision predates the start of the 2026–27 year on 1 July 2026.
+
+So this is not a research gap we can close by looking harder; the rate is genuinely unpublished. It stays `null` until the ATO publishes it, and **the page must be re-checked before the WFH calculator ships**.
 
 The UI must handle `null` gracefully: if a rate for the active FY is missing, the calculator shows "rate not yet available for 2026–27" rather than silently computing with a stale prior-year figure.
 
 ### The $300 nudge
 
 Fires when a user's total work-related claims for the FY approach or cross $300 — the point at which written evidence becomes mandatory. Worth wording carefully: the threshold is about *evidence requirements*, not a cap on what can be claimed. Phrasing it as "you can claim $300 without receipts" is a common and costly misreading.
+
+⚠️ **There are two unrelated $300 rules and they must not be conflated:**
+
+| Rule | What it means | Where it lives |
+| --- | --- | --- |
+| $300 evidence threshold | No written evidence required if *total work-related claims* for the year are ≤ $300 | `noReceiptThresholdCents` — this app, Phase 1 |
+| $300 immediate deduction | A *depreciating asset* costing ≤ $300 is deducted in full that year instead of declining in value over its effective life | Depreciation — Phase 3, deliberately not modelled |
+
+Same number, different rules, different triggers. Any in-app copy about "$300" must make clear which one it means.
 
 ### Disclaimer
 
@@ -264,6 +275,6 @@ UI gets manual testing on-device via Expo Go. Component and E2E tests are not wo
 
 ## 12. Open questions
 
-1. **The 2026–27 WFH fixed rate is unconfirmed** (§6) and must be verified against ato.gov.au before the calculator ships.
+1. **The 2026–27 WFH fixed rate is unpublished** (§6). Confirmed against the ATO's Fixed rate method page (last updated 8 June 2026), which lists rates only through 2025–26. This is blocked on the ATO, not on us — re-check before the WFH calculator ships, and treat it as a release gate rather than a research task.
 2. **Monetisation** — carried over from the pitch: subscription vs one-off unlock, and how price-sensitive a casual PAYG employee is. Doesn't block Phase 1; free tier is all of Phase 1 either way.
 3. **Category list** — the ATO category dropdown needs a final list agreed up front, since it's baked into the schema as seed data and changing it later means migrating existing receipts.
