@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useTheme } from '@react-navigation/native';
+import { router } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getRate, rateUnavailableMessage, ratesForFy, type NullableRate } from '@/config/atoRates';
-import { newId, receiptRepository } from '@/db/receiptRepository';
-import { ACTIVE_CATEGORIES, categoryById } from '@/domain/categories';
-import { createReceipt } from '@/domain/factories';
+import { receiptRepository } from '@/db/receiptRepository';
+import { categoryById } from '@/domain/categories';
 import { substantiationMessage, substantiationStatus } from '@/domain/substantiation';
 import type { CategoryTotal, Receipt } from '@/domain/types';
-import { currentFy, formatDateAu, fyBounds, fyLabel, toIsoDate } from '@/lib/financialYear';
+import { currentFy, formatDateAu, fyBounds, fyLabel } from '@/lib/financialYear';
+import { formatCents } from '@/lib/money';
 
 /**
  * Temporary development screen.
@@ -43,31 +44,13 @@ export default function Index() {
     }
   }, [fy]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const addSample = useCallback(async () => {
-    // Rotates through categories so category totals have something to show.
-    const category = ACTIVE_CATEGORIES.filter((c) => c.entryKind === 'receipt')[
-      Math.floor(Math.random() * ACTIVE_CATEGORIES.filter((c) => c.entryKind === 'receipt').length)
-    ];
-
-    try {
-      await receiptRepository.save(
-        createReceipt({
-          id: newId(),
-          merchant: SAMPLE_MERCHANTS[Math.floor(Math.random() * SAMPLE_MERCHANTS.length)],
-          amountCents: Math.floor(Math.random() * 15_000) + 500,
-          purchaseDate: toIsoDate(new Date()),
-          categoryId: category.id,
-        }),
-      );
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, [refresh]);
+  // On focus, not on mount: coming back from the receipt form has to pick up
+  // what was just saved, and the screen underneath never unmounts.
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   // Deleting is destructive and irreversible from the user's point of view, so
   // it asks first. The prompt names the receipt rather than saying "this item".
@@ -177,12 +160,14 @@ export default function Index() {
               </>
             )}
             <Pressable
-              onPress={addSample}
+              onPress={() => router.push('/receipt/new')}
+              accessibilityRole="button"
               style={({ pressed }) => [
-                styles.button,
-                { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+                styles.addButton,
+                { backgroundColor: colors.primary, opacity: pressed ? 0.7 : 1 },
               ]}>
-              <Text style={[styles.buttonLabel, { color: colors.primary }]}>Add sample receipt</Text>
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.addLabel}>Add receipt</Text>
             </Pressable>
           </>
         )}
@@ -205,24 +190,40 @@ export default function Index() {
         <Section title="Receipts" colors={colors}>
           {receipts.map((receipt) => (
             <View key={receipt.id} style={styles.receiptRow}>
-              <View style={styles.receiptText}>
-                <View style={styles.receiptHeading}>
-                  <Text
-                    style={[styles.rowLabel, styles.merchant, { color: colors.text }]}
-                    numberOfLines={1}>
-                    {receipt.merchant}
-                  </Text>
-                  <Text style={[styles.note, { color: colors.text }]}>
-                    {formatDateAu(receipt.purchaseDate)}
+              <Pressable
+                onPress={() => router.push(`/receipt/${receipt.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit receipt from ${receipt.merchant}`}
+                style={({ pressed }) => [styles.receiptTap, { opacity: pressed ? 0.6 : 1 }]}>
+                <View style={styles.receiptText}>
+                  <View style={styles.receiptHeading}>
+                    <Text
+                      style={[styles.rowLabel, styles.merchant, { color: colors.text }]}
+                      numberOfLines={1}>
+                      {receipt.merchant}
+                    </Text>
+                    <Text style={[styles.note, { color: colors.text }]}>
+                      {formatDateAu(receipt.purchaseDate)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.note, { color: colors.text }]} numberOfLines={1}>
+                    {categoryById(receipt.categoryId)?.name ?? receipt.categoryId}
                   </Text>
                 </View>
-                <Text style={[styles.note, { color: colors.text }]} numberOfLines={1}>
-                  {categoryById(receipt.categoryId)?.name ?? receipt.categoryId}
+
+                {receipt.photoUri !== null && (
+                  <Ionicons
+                    name="image-outline"
+                    size={15}
+                    color={colors.text}
+                    style={styles.photoBadge}
+                  />
+                )}
+
+                <Text style={[styles.rowValue, styles.receiptAmount, { color: colors.text }]}>
+                  {formatCents(receipt.amountCents)}
                 </Text>
-              </View>
-              <Text style={[styles.rowValue, styles.receiptAmount, { color: colors.text }]}>
-                {formatCents(receipt.amountCents)}
-              </Text>
+              </Pressable>
               <DeleteButton receipt={receipt} onPress={confirmDelete} colors={colors} />
             </View>
           ))}
@@ -235,8 +236,6 @@ export default function Index() {
     </ScrollView>
   );
 }
-
-const SAMPLE_MERCHANTS = ['Officeworks', 'Bunnings', 'JB Hi-Fi', 'Telstra', 'Kmart'];
 
 type Colors = ReturnType<typeof useTheme>['colors'];
 
@@ -323,11 +322,6 @@ function RateRow({
   return <Row label={label} value={`${value}c`} colors={colors} />;
 }
 
-/** Temporary. A proper money module lands with the receipt screens. */
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString('en-AU', { minimumFractionDigits: 2 })}`;
-}
-
 const styles = StyleSheet.create({
   content: { padding: 20, gap: 16 },
   title: { fontSize: 34, fontWeight: '700' },
@@ -352,6 +346,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   receiptRow: { flexDirection: 'row', alignItems: 'center' },
+  // The tap target for editing covers everything except the bin, so the two
+  // actions can't be confused for one another.
+  receiptTap: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
+  photoBadge: { opacity: 0.35, marginRight: 8 },
   // flex: 1 lets the merchant name absorb the leftover width, so the amount
   // and bin sit in fixed columns instead of drifting with the name's length.
   receiptText: { flex: 1, gap: 2, paddingRight: 12 },
@@ -370,13 +368,17 @@ const styles = StyleSheet.create({
   unavailable: { gap: 4 },
   warning: { fontSize: 13, lineHeight: 18 },
   note: { fontSize: 12, opacity: 0.45, lineHeight: 16 },
-  button: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingVertical: 10,
+  // Filled rather than outlined: adding a receipt is the one thing this screen
+  // is for, and it should read as the primary action at a glance.
+  addButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    paddingVertical: 13,
+    marginTop: 6,
   },
-  buttonLabel: { fontSize: 15, fontWeight: '600' },
+  addLabel: { color: '#fff', fontSize: 15, fontWeight: '700' },
   disclaimer: { fontSize: 12, opacity: 0.5, textAlign: 'center', marginTop: 4 },
 });

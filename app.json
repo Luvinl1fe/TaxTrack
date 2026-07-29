@@ -39,7 +39,15 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "TaxTrack uses the camera so you can photograph a receipt as written evidence for your tax return.",
+          "photosPermission": "TaxTrack needs access to your photos so you can attach an existing receipt image to a deduction."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
