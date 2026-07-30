@@ -2,7 +2,11 @@
 
 Companion to [TaxTrack_Pitch.md](./TaxTrack_Pitch.md). The pitch describes *what* we're building and why; this document records the engineering decisions for actually shipping Phase 1.
 
-**Status:** planning complete, no code written yet.
+**Status:** milestones 0–6 of 8 built, merged and verified on a device (30 July 2026). Milestone 7 (CSV + PDF export) is next. See §11 for the milestone table and `sessions/` for what happened when.
+
+**This document is the design record, not the status board.** Where the code has moved past a decision recorded here, the section says so inline. Day-to-day state lives in the session logs; what is *not* covered or tested lives in `KNOWN_GAPS.md`.
+
+⚠️ **One release gate is open:** the 2026–27 WFH fixed rate is still unpublished, and a provisional figure stands in for it (§6, §12 item 1). The app is not shippable until that is resolved.
 
 ---
 
@@ -45,49 +49,59 @@ Occupation checklists are deferred because they're content-curation work (resear
 | Photos | **expo-camera** + **expo-image-picker** | Capture new receipts or attach existing photos. |
 | File storage | **expo-file-system** | Receipt images written to app documents directory. |
 | PDF export | **expo-print** (HTML → PDF) + **expo-sharing** | No native module needed; renders an HTML summary to PDF. |
-| Cloud (final milestone) | **Firebase JS SDK** (`firebase` package) | ⚠️ Deliberately *not* `@react-native-firebase/*` — see §8. |
+| Cloud (final milestone) | **Firebase JS SDK** (`firebase` package) | ⚠️ Deliberately *not* `@react-native-firebase/*` — see §9. |
 | Tests | **jest-expo** | Unit tests for logic modules. |
 
 ---
 
 ## 3. Environment prerequisites
 
-Verified on this machine (July 2026) — **the toolchain is not currently installed**:
-
 | Tool | Status |
 | --- | --- |
-| Node / npm | ❌ Not installed — **step zero** |
-| Full Xcode | ❌ Command Line Tools only |
-| iOS Simulator | ❌ None available |
-| Android SDK / emulator | ❌ Not installed |
+| Node / npm | ✅ Installed (milestone 0) — v24 / npm 11 |
+| Full Xcode | ❌ Command Line Tools only — **still true** |
+| iOS Simulator | ❌ None available — **still true** |
+| Android SDK / emulator | ❌ Not installed — **still true** |
 | Flutter | ❌ Not installed (not needed) |
-| Swift 6.3.2, OpenJDK 11, Python 3.9.6, git | ✅ Present |
+| Swift, OpenJDK, Python, git | ✅ Present |
 
-**Consequence:** there is no simulator or emulator to fall back on. The development loop is **Expo Go on a physical phone**, connected over the same Wi-Fi network. This is fine — arguably better, since camera and receipt capture are the core interactions and both are more honestly tested on real hardware.
+**Consequence, and it has held for every milestone since:** there is no simulator or emulator to fall back on. The development loop is **Expo Go on a physical phone** over the same Wi-Fi network. This is fine — arguably better, since camera and receipt capture are the core interactions and both are more honestly tested on real hardware.
 
-Install Node via Homebrew before anything else. Everything after that is `npx`.
+It also means **the device is the only real test of a screen.** Milestone 4's blank photo viewer and milestone 5's unreachable financial year both typechecked, linted, bundled and passed the whole suite. Check new UI on the phone before calling it done.
 
-**Scaffolding note:** the repo already contains tracked files (`README.md`, the two `.md` docs). `create-expo-app` expects an empty directory, so scaffold into a temporary directory and move the generated files in, rather than running it in place and risking the existing files.
+**Running it:**
+
+```
+npx expo start --lan          # --tunnel if the network blocks phone → Mac
+npx qrcode-terminal --small exp://<mac-ip>:8081
+```
+
+Expo prints the QR only at startup and has no key to redraw it, hence the second command. Add `--clear` after adding or moving a route — a new tab won't always appear on a hot reload.
+
+**Scaffolding note (done, milestone 1):** the repo already contained tracked files, and `create-expo-app` expects an empty directory, so it was scaffolded into a temporary directory and moved in.
 
 ---
 
 ## 4. Data architecture
 
-**Local-first.** The app is fully usable with no account and no network. Firebase is layered on at the end (§8), not wired first.
+**Local-first.** The app is fully usable with no account and no network. Firebase is layered on at the end (§9), not wired first.
 
 Everything goes through a **repository interface** so the SQLite implementation and a later Firestore-backed one stay interchangeable:
 
 ```ts
 interface ReceiptRepository {
-  list(fy: number, opts?: { categoryId?: string }): Promise<Receipt[]>;
+  list(fy: number, opts?: { categoryId?: string; includeDeleted?: boolean }): Promise<Receipt[]>;
   get(id: string): Promise<Receipt | null>;
   save(receipt: Receipt): Promise<void>;
   softDelete(id: string): Promise<void>;
   totalsByCategory(fy: number): Promise<CategoryTotal[]>;
+  financialYearsWithReceipts(): Promise<number[]>;
 }
 ```
 
-Screens talk only to repositories, never to SQLite directly.
+Screens talk only to repositories, never to SQLite directly. `src/domain/repositories.ts` is the authority; `WfhLogRepository` and `VehicleTripRepository` follow the same shape with `totalHours()` and `kilometresByVehicle()` respectively.
+
+⚠️ **Anything that enumerates "years with data" must consider every record type.** There are three — receipts, trips, WFH logs — and each has its own `financialYears…()` query, unioned in `FinancialYearHeaderControl`. This has already caused the same bug three times: a year holding only one kind of record was unreachable in the year selector, so the data was invisible though saved. A fourth record type means a fourth query.
 
 ### Schema sketch
 
@@ -123,7 +137,7 @@ CREATE INDEX idx_receipts_category ON receipts (category_id);
 
 1. **Money as integer cents.** Never floats. `$49.95` is `4995`. Float arithmetic on currency produces wrong totals, and this is a tax app.
 2. **`financial_year` is a stored, indexed column,** not derived at query time. It's the primary filter in almost every screen.
-3. **Sync columns exist from day one,** even though nothing reads them until §8. Adding `updated_at` / tombstones to a table already full of user receipts is a migration; including them now costs nothing.
+3. **Sync columns exist from day one,** even though nothing reads them until §9. Adding `updated_at` / tombstones to a table already full of user receipts is a migration; including them now costs nothing.
 
 **Photos are stored as file URIs, not blobs.** Images go in the app documents directory; SQLite stores the path. Blobs would bloat the database and make the eventual Firebase Storage upload awkward.
 
@@ -159,10 +173,22 @@ export interface FyRates {
   kmCapPerCar: number;
   substantiationThresholdCents: number;   // aggregate evidence test
   immediateWriteOffThresholdCents: number; // per-asset depreciation test
+  provisional?: Partial<Record<NullableRate, number>>; // stand-ins, never published values
 }
 
 export const ATO_RATES: Record<number, FyRates> = { /* keyed by FY start year */ };
 ```
+
+### Provisional rates — added milestone 6
+
+A rate the ATO hasn't published blocks the calculator that needs it. Rather than stall, a year may carry a **provisional** stand-in, with a safety property that is structural rather than a matter of discipline:
+
+- `getRate()` and `ratesForFy().<rate>` keep returning `null`. Every caller written before this is unaffected, and a test asserts it.
+- The only route to a provisional number is **`resolveRate()`**, which returns `{ cents, provisional: true }`. The flag is in the same object as the value, so **no caller can obtain the figure without learning it is an assumption.**
+- Any screen showing one must render `provisionalRateMessage()`, which ends "don't put it on your return".
+- A test enforces that a provisional value exists **only** where the published value is `null` — so setting the real rate without deleting the placeholder fails the suite instead of shipping both.
+
+A year with a provisional rate is a 🔴 release gate, not a solved problem. Fine to build on; not fine to ship.
 
 ### Rates as researched (July 2026)
 
@@ -179,7 +205,17 @@ export const ATO_RATES: Record<number, FyRates> = { /* keyed by FY start year */
 
 So this is not a research gap we can close by looking harder; the rate is genuinely unpublished. It stays `null` until the ATO publishes it, and **the page must be re-checked before the WFH calculator ships**.
 
-The UI must handle `null` gracefully: if a rate for the active FY is missing, the calculator shows "rate not yet available for 2026–27" rather than silently computing with a stale prior-year figure.
+The UI must handle `null` gracefully: if a rate for the active FY is missing, the calculator shows `rateUnavailableMessage()` — "rate not yet available for 2026–27" — rather than silently computing with a stale prior-year figure.
+
+**As built (milestone 6), there are three cases, not two:**
+
+| Case | What the screen shows |
+| --- | --- |
+| Published rate | The figure, headed "Claimable" |
+| Provisional stand-in | The figure, headed **"Estimate"**, plus `provisionalRateMessage()` in red |
+| Neither | `rateUnavailableMessage()`, and the logged hours or trips are still listed |
+
+The WFH calculator is currently in the middle case and the vehicle calculator in the first.
 
 ### The $300 nudge
 
@@ -223,14 +259,22 @@ TaxTrack is a record-keeping tool, **not tax advice**. This must appear in three
 
 Kept deliberately tight — this is an MVP.
 
-| Screen | Contents |
-| --- | --- |
-| **Dashboard** | Active FY selector, total claimed, running totals by category, $300 threshold nudge |
-| **Receipt list** | Filtered by FY, searchable, grouped by category |
-| **Add/edit receipt** | Merchant, amount, date, category dropdown, work-use %, notes, camera/library photo attach |
-| **WFH calculator** | Log hours by date; outputs the claimable figure for the FY |
-| **Vehicle calculator** | Log trips by km + purpose; applies rate and 5,000 km cap; outputs claimable figure |
-| **Settings / export** | CSV + PDF export, disclaimer, (later) account & sync status |
+**Four tabs**, plus entry forms pushed on top of them. A permanently visible tab bar rather than buttons that push: the user does this once a year and shouldn't have to remember where anything was. The **financial year selector lives in the header of every tab**, because the year governs what all of them show.
+
+| Route | Tab / screen | Contents | Built |
+| --- | --- | --- | --- |
+| `(tabs)/index` | **Dashboard** | Receipts total, per-category totals, $300 nudge, separate cards for the vehicle and WFH claims | ✅ m5–6 |
+| `(tabs)/receipts` | **Receipts** | Filtered by FY, searchable, grouped by category | ✅ m5 |
+| `(tabs)/vehicle` | **Vehicle** | Per-car claim, cap progress, trip list | ✅ m6 |
+| `(tabs)/wfh` | **Home** | Hours by month, claimable figure, double-claim check | ✅ m6 |
+| `receipt/[id]` | Add/edit receipt | Merchant, amount, date, category, work-use %, notes, camera/library photo | ✅ m4 |
+| `trip/[id]` | Add/edit trip | Date, km, purpose, car (picked from cars already logged) | ✅ m6 |
+| `wfh/[id]` | Log/edit hours | Date, decimal hours, notes | ✅ m6 |
+| — | **Settings / export** | CSV + PDF export, disclaimer, (later) account & sync status | ⬜ m7 |
+
+The WFH tab is labelled **"Home"**, not "WFH": an acronym is jargon to someone doing this once a year.
+
+**Calculator claims stay on their own cards, never folded into the receipts total.** Cents-per-kilometre already covers fuel, servicing and depreciation for that car; the WFH fixed rate already covers electricity, gas, phone, internet and stationery. A single "total claimed" invites claiming those *again* as receipts, which the ATO forbids. The Home tab goes further and actively flags receipts in categories the fixed rate covers.
 
 ---
 
