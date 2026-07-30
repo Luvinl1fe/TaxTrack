@@ -73,40 +73,54 @@ right after saving would not catch it.
 
 ---
 
-### 🟠 The repositories have no automated tests
+### 🟠 `SqliteWfhLogRepository` and `SqliteVehicleTripRepository` have never run on a device
 
-**Found:** milestone 3.
+**Found:** milestone 3. **Narrowed:** milestone 5.
 
-The mappers, schema, factories and domain logic are covered. The actual SQL is
-not: the migration runner, `totalsByCategory`'s apportionment, and the
-`deleted_at IS NULL` filter have only ever been verified by hand on a device.
+Both are now executed by the `better-sqlite3` tests — save, get, list, the
+soft-delete filter, `totalHours` and `kilometresByVehicle` all run real SQL. What
+remains is that no screen has ever called them, so nothing has exercised them
+against the device's own SQLite build or with data a user actually typed.
 
-**Why it exists:** `expo-sqlite` is a native module and won't load in Jest's
-Node environment, so the usual approach doesn't work.
-
-**Why it matters:** `totalsByCategory` rounds apportioned amounts in SQL to
-match `deductibleCents()` in TypeScript. If those two ever disagree, the app
-shows a total that's a few cents off what the receipts add up to — plausible
-enough that nobody notices, in a document going to the ATO.
-
-**How to close:** add `better-sqlite3` as a dev dependency and run the real
-`MIGRATIONS` DDL and the real queries against in-memory SQLite in Node. Covers
-the migration path and the aggregate maths without a device.
-
-**When:** before milestone 5, where totals become user-facing.
+**How to close:** milestone 6 (WFH + vehicle calculators), where the screens
+arrive and the done-when check runs on the phone.
 
 ---
 
-### 🟠 `SqliteWfhLogRepository` and `SqliteVehicleTripRepository` have never executed
+### 🟡 Repository tests run on `better-sqlite3`, not the device's SQLite
 
-**Found:** milestone 3.
+**Found:** milestone 5.
 
-Both are written and typechecked, but nothing has ever called them — not in
-tests, not on device. The dev screen only exercises receipts. Typechecking
-proves the shapes line up; it says nothing about whether the SQL runs.
+The tests that close the SQL gap execute against `better-sqlite3` in Node. That
+is a different SQLite build from the one `expo-sqlite` ships, so in principle a
+statement could pass in Jest and behave differently on the phone.
 
-**How to close:** exercised for real in milestone 6 (WFH + vehicle
-calculators), and covered by the `better-sqlite3` tests above.
+**Why it's accepted:** the alternative is no SQL coverage at all. The statements
+executed are byte-for-byte the app's own, and the behaviour they depend on —
+`ROUND()` half-away-from-zero, `SUM()` over no rows being `NULL`, text ordering
+of `YYYY-MM-DD` — is core SQLite, not build-specific.
+
+**Watch for:** anything relying on a compile-time option, a collation, or a
+SQLite version feature. The `PRAGMA journal_mode = WAL` in `openAndPrepare` is
+already untested for this reason: it's meaningless for `:memory:`.
+
+---
+
+### 🟡 WFH hours are stored as REAL, so totals carry float error
+
+**Found:** milestone 5.
+
+`wfh_logs.hours` is REAL and `totalHours` is a SQL `SUM()`. Ordinary values like
+7.6 aren't exactly representable, so a year of logs can total a hair off the
+decimal figure — `19.75` is exact, `19.7` is not.
+
+**Why it's accepted for now:** nothing consumes the total yet. Money is integer
+cents everywhere precisely to avoid this; hours escaped that rule because they
+are genuinely fractional.
+
+**How to close:** milestone 6 has to decide where hours get rounded on the way
+to a deduction — once, at the end, on `hours × cents-per-hour` — and test that
+figure rather than the raw sum.
 
 ---
 
@@ -161,4 +175,35 @@ year.
 
 ## Closed
 
-_Nothing yet._
+### 🟠 The repositories have no automated tests
+
+**Found:** milestone 3. **Closed:** milestone 5, PR #4.
+
+The SQL had only ever been verified by hand on a device, because `expo-sqlite` is
+a native module that won't load in Jest. The risk that mattered:
+`totalsByCategory` apportions work-use in SQL while `deductibleCents()` does the
+same arithmetic in TypeScript, and nothing proved the two agreed — a total a few
+cents off what the receipts add up to is plausible enough that nobody notices, in
+a document going to the ATO.
+
+**Closed by** `src/db/driver.ts`, a six-method interface `expo-sqlite` already
+satisfies, plus an adapter over in-memory `better-sqlite3` in
+`test-support/sqliteTestDatabase.ts`. Tests execute the real `MIGRATIONS` DDL and
+the real repository statements — no query rewriting — covering:
+
+- the migration runner: fresh apply, idempotent re-run, the downgrade guard, and
+  `user_version` staying put when a migration throws
+- category seeding: list order, re-seed without duplicates, retired categories
+  surviving
+- receipts: full-field round trips (which is what proves the positional binds
+  line up), upsert, the FY and `deleted_at IS NULL` filters, sort order,
+  tombstoning
+- `totalsByCategory` against hand-calculated fixtures, cross-checked against
+  `deductibleCents()` and against the $300 substantiation total, and swept over
+  all 101 work-use percentages at eight amounts
+
+The sweep was verified to fail: replacing `ROUND(… / 100.0)` with integer
+division breaks ten tests.
+
+**Left open:** the two 🟡 gaps above, which this work surfaced rather than
+introduced.
