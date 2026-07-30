@@ -53,7 +53,11 @@ real unit tests on logic and minimal UI testing. Form logic, then search,
 grouping and year selection, were each extracted into pure modules specifically
 so the untested surface stays thin.
 
-**What's untested but not trivial**, and so worth checking by hand after any
+**Verified instead by:** a hand pass on device, 30 July 2026 — both tabs, the year
+sheet, sticky headers, search, both empty states, the delete confirmation, and an
+edit refreshing both tabs on return.
+
+**What's untested but not trivial**, and so worth re-checking by hand after any
 change to the dashboard or list:
 
 - `useFocusEffect` refresh — the reason a saved receipt appears without a reload
