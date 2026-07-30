@@ -177,8 +177,7 @@ year.
 
 ### 🟠 The repositories have no automated tests
 
-**Found:** milestone 3. **Closed:** milestone 5, branch
-`milestone-5-repository-tests`.
+**Found:** milestone 3. **Closed:** milestone 5, PR #4.
 
 The SQL had only ever been verified by hand on a device, because `expo-sqlite` is
 a native module that won't load in Jest. The risk that mattered:
