@@ -1,8 +1,11 @@
 import {
   ATO_RATES,
   getRate,
+  isRateProvisional,
+  provisionalRateMessage,
   rateUnavailableMessage,
   ratesForFy,
+  resolveRate,
   supportedFyRange,
   type NullableRate,
 } from '@/config/atoRates';
@@ -126,6 +129,56 @@ describe('rateUnavailableMessage', () => {
       expect(rateUnavailableMessage(2026, rate)).toMatch(/isn't available yet/);
     },
   );
+});
+
+describe('provisional rates', () => {
+  it('never leaks into getRate, which reports only published figures', () => {
+    // The invariant the whole mechanism rests on. If this ever fails, every
+    // existing caller starts silently treating an assumption as official.
+    expect(getRate(2026, 'wfhCentsPerHour')).toBeNull();
+    expect(ratesForFy(2026)?.wfhCentsPerHour).toBeNull();
+  });
+
+  it('is reachable only with the provisional flag attached', () => {
+    expect(resolveRate(2026, 'wfhCentsPerHour')).toEqual({ cents: 70, provisional: true });
+    expect(isRateProvisional(2026, 'wfhCentsPerHour')).toBe(true);
+  });
+
+  it('prefers the published rate when one exists', () => {
+    // 2026-27 cents-per-km is published (LI 2026/19), so no assumption is made.
+    expect(resolveRate(2026, 'centsPerKm')).toEqual({ cents: 91, provisional: false });
+    expect(isRateProvisional(2026, 'centsPerKm')).toBe(false);
+  });
+
+  it.each([2024, 2025])('reports %i rates as published, not provisional', (fy) => {
+    expect(resolveRate(fy, 'wfhCentsPerHour')).toEqual({ cents: 70, provisional: false });
+    expect(isRateProvisional(fy, 'wfhCentsPerHour')).toBe(false);
+  });
+
+  it('returns null when neither a published nor a provisional rate exists', () => {
+    expect(resolveRate(1999, 'wfhCentsPerHour')).toBeNull();
+    expect(isRateProvisional(1999, 'wfhCentsPerHour')).toBe(false);
+  });
+
+  it('only ever stands in for a rate that is actually unpublished', () => {
+    // A provisional value alongside a published one would be dead config at
+    // best, and a contradiction at worst.
+    for (const [fy, rates] of Object.entries(ATO_RATES)) {
+      for (const rate of Object.keys(rates.provisional ?? {}) as NullableRate[]) {
+        expect(rates[rate]).toBeNull();
+        expect(getRate(Number(fy), rate)).toBeNull();
+      }
+    }
+  });
+
+  it('warns in terms a user can act on', () => {
+    const message = provisionalRateMessage(2026, 'wfhCentsPerHour');
+
+    expect(message).toContain('2026–27');
+    expect(message).toContain('estimate');
+    // The operative instruction: an estimate must not reach a tax return.
+    expect(message).toContain("don't put it on your return");
+  });
 });
 
 describe('supportedFyRange', () => {

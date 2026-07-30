@@ -54,10 +54,30 @@ export interface FyRates {
    * and is not modelled in Phase 1.
    */
   immediateWriteOffThresholdCents: number;
+  /**
+   * Stand-in values for rates the ATO hasn't published, so a calculator can be
+   * built and tested before the real figure exists.
+   *
+   * **Never a published rate.** `getRate()` keeps returning `null` for these
+   * years, and the only way to read one is `resolveRate()`, which hands back a
+   * `provisional: true` flag alongside the number. The flag is not optional and
+   * not separable — a caller cannot obtain the figure without also learning it
+   * is assumed, which is what stops a guess reaching a tax return unlabelled.
+   *
+   * A year with a provisional rate is a 🔴 release gate, not a solved problem.
+   */
+  provisional?: Partial<Record<NullableRate, number>>;
 }
 
 /** The rate keys that may legitimately be absent for a given year. */
 export type NullableRate = 'wfhCentsPerHour' | 'centsPerKm';
+
+/** A rate together with whether it is the ATO's published figure. */
+export interface ResolvedRate {
+  cents: number;
+  /** `true` when the figure is an assumption standing in for an unpublished rate. */
+  provisional: boolean;
+}
 
 const KM_CAP_PER_CAR = 5_000;
 const SUBSTANTIATION_THRESHOLD_CENTS = 30_000; // $300
@@ -97,6 +117,13 @@ export const ATO_RATES: Record<number, FyRates> = {
     // 70c carries forward — a plausible-looking wrong rate on a tax return is
     // this app's worst failure mode. Release gate, see PHASE_1_PLAN.md §12.
     wfhCentsPerHour: null,
+    // Provisional stand-in so the WFH calculator can be built now. Deliberately
+    // *not* assigned to wfhCentsPerHour above: this value only ever leaves the
+    // module through resolveRate(), which forces the caller to carry the
+    // provisional flag and label it on screen.
+    provisional: {
+      wfhCentsPerHour: 70, // last published figure, PCG 2023/1 (2024–25, 2025–26)
+    },
     // 89c base + a one-off 2c uplift for 2026–27.
     //
     // Source: legislative instrument LI 2026/19, NOT ato.gov.au's cents per
@@ -131,6 +158,33 @@ export function getRate(fy: number, rate: NullableRate): number | null {
   return ratesForFy(fy)?.[rate] ?? null;
 }
 
+/**
+ * The figure a calculator should use, and whether it's official.
+ *
+ * Prefers the published rate. Falls back to a provisional stand-in only when
+ * there is no published figure, and says so in the return value. `null` means
+ * neither exists and nothing can be calculated.
+ *
+ * This is the only route to a provisional number. Returning the flag in the same
+ * object as the value is the point: there is no call that yields the cents
+ * without the caller seeing that it's an assumption.
+ */
+export function resolveRate(fy: number, rate: NullableRate): ResolvedRate | null {
+  const rates = ratesForFy(fy);
+  if (rates === null) return null;
+
+  const published = rates[rate];
+  if (published !== null) return { cents: published, provisional: false };
+
+  const provisional = rates.provisional?.[rate];
+  return provisional === undefined ? null : { cents: provisional, provisional: true };
+}
+
+/** True when a year's figure for a rate is an assumption. Cheap check for UI. */
+export function isRateProvisional(fy: number, rate: NullableRate): boolean {
+  return resolveRate(fy, rate)?.provisional === true;
+}
+
 const RATE_DESCRIPTIONS: Record<NullableRate, string> = {
   wfhCentsPerHour: 'working-from-home fixed rate',
   centsPerKm: 'cents-per-kilometre rate',
@@ -139,4 +193,18 @@ const RATE_DESCRIPTIONS: Record<NullableRate, string> = {
 /** User-facing explanation for why a calculator can't produce a number. */
 export function rateUnavailableMessage(fy: number, rate: NullableRate): string {
   return `The ${RATE_DESCRIPTIONS[rate]} for ${fyLabel(fy)} isn't available yet, so this can't be calculated.`;
+}
+
+/**
+ * The warning that must accompany any figure computed from a provisional rate.
+ *
+ * Says the number is an estimate, which year's rate it borrowed, and that it will
+ * change — so nobody copies it onto a return believing it's official.
+ */
+export function provisionalRateMessage(fy: number, rate: NullableRate): string {
+  return (
+    `The ATO hasn't published the ${RATE_DESCRIPTIONS[rate]} for ${fyLabel(fy)} yet. ` +
+    `This is an estimate using the last published rate, and it will change — ` +
+    `don't put it on your return.`
+  );
 }

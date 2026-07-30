@@ -175,19 +175,38 @@ local-only storage warning above belongs.
 
 ---
 
-### 🔴 The 2026–27 WFH fixed rate is unpublished
+### 🔴 The 2026–27 WFH fixed rate is unpublished — a provisional 70c stands in
 
-**Found:** milestone 2. Tracked in `PHASE_1_PLAN.md` §12.
+**Found:** milestone 2. **Provisional value added:** milestone 6. Tracked in
+`PHASE_1_PLAN.md` §12.
 
-`ATO_RATES[2026].wfhCentsPerHour` is `null`. The ATO's Fixed rate method page
-(last updated 8 June 2026) still lists rates only through 2025–26.
+`ATO_RATES[2026].wfhCentsPerHour` is still `null`. The ATO's Fixed rate method
+page listed rates only through 2025–26 as at 8 June 2026, and it returns 403 to
+automated fetches, so it has to be checked by hand.
 
-**Why it exists:** blocked on the ATO, not on us. The config deliberately holds
-`null` rather than carrying last year's 70c forward, because a stale rate
+**Why it exists:** blocked on the ATO, not on us. The published field deliberately
+holds `null` rather than carrying last year's 70c forward, because a stale rate
 produces a confidently wrong deduction.
 
-**How to close:** set the rate once published. It's a release gate for the WFH
-calculator (milestone 6), not a research task.
+**What changed in milestone 6:** so development isn't stalled, `ATO_RATES[2026]`
+now carries `provisional: { wfhCentsPerHour: 70 }` — the last published figure.
+The safety property is structural rather than a matter of discipline:
+
+- `getRate()` and `ratesForFy().wfhCentsPerHour` still return `null`. Every
+  existing caller behaves exactly as before, and a test asserts this.
+- The only route to the number is `resolveRate()`, which returns
+  `{ cents, provisional: true }`. The flag is in the same object as the value, so
+  no caller can obtain the figure without learning it is an assumption.
+- Any screen showing such a figure must render `provisionalRateMessage()`, which
+  ends "don't put it on your return".
+
+**Why this is still 🔴 and not downgraded:** a provisional rate is fine for
+building and testing, and unacceptable in a released app. Shipping it would put
+an estimate in front of someone preparing a return.
+
+**How to close:** set `wfhCentsPerHour` once the ATO publishes, and delete the
+`provisional` block for 2026. A test enforces that a provisional value only ever
+exists where the published one is `null`, so leaving both would fail.
 
 ---
 
