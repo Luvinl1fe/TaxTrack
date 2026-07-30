@@ -7,10 +7,11 @@
 
 import * as SQLite from 'expo-sqlite';
 
+import type { SqliteDatabase } from '@/db/driver';
 import { CATEGORIES } from '@/domain/categories';
 import { DATABASE_NAME, MIGRATIONS } from '@/db/schema';
 
-let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let databasePromise: Promise<SqliteDatabase> | null = null;
 
 /**
  * The shared database handle.
@@ -18,12 +19,23 @@ let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
  * Memoised on the promise, not the resolved value, so concurrent callers
  * during startup await one open rather than racing several.
  */
-export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+export function getDatabase(): Promise<SqliteDatabase> {
   databasePromise ??= openAndPrepare();
   return databasePromise;
 }
 
-async function openAndPrepare(): Promise<SQLite.SQLiteDatabase> {
+/**
+ * Point the repositories at a database supplied by a test.
+ *
+ * The only way to exercise the real SQL off-device: `expo-sqlite` doesn't load
+ * under Jest, so tests pass an adapter over in-memory `better-sqlite3`. Pass
+ * `null` to forget it again. Never called by the app.
+ */
+export function setDatabaseForTests(db: SqliteDatabase | null): void {
+  databasePromise = db === null ? null : Promise.resolve(db);
+}
+
+async function openAndPrepare(): Promise<SqliteDatabase> {
   const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
 
   // WAL improves concurrent read/write behaviour; foreign keys are off by
@@ -42,7 +54,7 @@ async function openAndPrepare(): Promise<SQLite.SQLiteDatabase> {
  * `user_version` holds the count already applied, so a fresh install runs all
  * of them and an existing install runs only the tail.
  */
-export async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
+export async function migrate(db: SqliteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const applied = row?.user_version ?? 0;
 
@@ -71,7 +83,7 @@ export async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
  * a later build dropped — so an old receipt still resolves to a name rather
  * than showing a bare id.
  */
-export async function seedCategories(db: SQLite.SQLiteDatabase): Promise<void> {
+export async function seedCategories(db: SqliteDatabase): Promise<void> {
   await db.withTransactionAsync(async () => {
     for (const [index, category] of CATEGORIES.entries()) {
       await db.runAsync(
