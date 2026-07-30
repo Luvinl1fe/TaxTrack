@@ -123,6 +123,17 @@ class SqliteReceiptRepository implements ReceiptRepository {
       receiptCount: row.receipt_count,
     }));
   }
+
+  async financialYearsWithReceipts(): Promise<number[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<{ financial_year: number }>(
+      `SELECT DISTINCT financial_year
+       FROM receipts
+       WHERE deleted_at IS NULL
+       ORDER BY financial_year DESC`,
+    );
+    return rows.map((row) => row.financial_year);
+  }
 }
 
 class SqliteWfhLogRepository implements WfhLogRepository {
