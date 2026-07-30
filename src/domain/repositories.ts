@@ -52,4 +52,21 @@ export interface VehicleTripRepository {
   softDelete(id: string): Promise<void>;
   /** Kilometres per vehicle. The 5,000km cap applies per car, not per person. */
   kilometresByVehicle(fy: number): Promise<{ vehicleLabel: string; kilometres: number }[]>;
+  /**
+   * Vehicle labels already used, most recently first, across all years.
+   *
+   * So the entry form can offer the cars a user has already logged instead of
+   * asking them to retype the name. Labels are matched exactly, so 'Hilux' and
+   * 'hilux' would be two cars with two separate 5,000km caps — picking from a
+   * list is what prevents that.
+   */
+  vehicleLabels(): Promise<string[]>;
+  /**
+   * Financial years holding at least one trip, newest first.
+   *
+   * The year selector unions this with the receipt years. Without it, a year in
+   * which someone logged trips but saved no receipts would be missing from the
+   * picker — and so unreachable, exactly the bug the selector was added to fix.
+   */
+  financialYearsWithTrips(): Promise<number[]>;
 }

@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@react-navigation/native';
 import { Tabs } from 'expo-router';
 
+import { FinancialYearHeaderControl } from '@/components/FinancialYearHeaderControl';
+
 export default function TabsLayout() {
   const { colors } = useTheme();
 
@@ -19,7 +21,13 @@ export default function TabsLayout() {
     // Only the active tint is overridden. React Navigation's default inactive
     // grey already reads as inactive in both themes; colors.text would be full
     // white in dark mode, making both tabs look selected.
-    <Tabs screenOptions={{ tabBarActiveTintColor: colors.primary }}>
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: colors.primary,
+        // Every tab shows the year, because the year governs what every tab
+        // shows. Declared once here rather than per screen.
+        headerRight: () => <FinancialYearHeaderControl />,
+      }}>
       <Tabs.Screen
         name="index"
         options={{
@@ -43,6 +51,15 @@ export default function TabsLayout() {
           title: 'Receipts',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'receipt' : 'receipt-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="vehicle"
+        options={{
+          title: 'Vehicle',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'car' : 'car-outline'} size={size} color={color} />
           ),
         }}
       />

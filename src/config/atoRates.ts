@@ -129,6 +129,11 @@ export const ATO_RATES: Record<number, FyRates> = {
     // Source: legislative instrument LI 2026/19, NOT ato.gov.au's cents per
     // kilometre page — that page still showed 88c at time of writing. The
     // instrument is authoritative; the guidance page trails it.
+    //
+    // Corroborated 30 July 2026: the guidance page (published 4 May 2026,
+    // QC107246) still lists rates only to 2025–26, exactly as expected if it
+    // trails the instrument. Re-verify against LI 2026/19 before release — this
+    // is the one rate in the table not confirmed against a second source.
     centsPerKm: 91,
     kmCapPerCar: KM_CAP_PER_CAR,
     substantiationThresholdCents: SUBSTANTIATION_THRESHOLD_CENTS,

@@ -16,9 +16,9 @@ import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { FinancialYearButton, FinancialYearPicker } from '@/components/FinancialYearPicker';
-import { receiptRepository } from '@/db/receiptRepository';
-import { categoryName, financialYearOptions } from '@/domain/receiptList';
+import { provisionalRateMessage, rateUnavailableMessage } from '@/config/atoRates';
+import { receiptRepository, vehicleTripRepository } from '@/db/receiptRepository';
+import { categoryName } from '@/domain/receiptList';
 import {
   substantiationMessage,
   substantiationStatus,
@@ -26,7 +26,8 @@ import {
   type SubstantiationStatus,
 } from '@/domain/substantiation';
 import type { CategoryTotal } from '@/domain/types';
-import { currentFy, fyLabel } from '@/lib/financialYear';
+import { calculateVehicleClaim, type VehicleCalculation } from '@/domain/vehicleCalculator';
+import { fyLabel } from '@/lib/financialYear';
 import { formatCents } from '@/lib/money';
 import { useFinancialYear } from '@/state/financialYear';
 
@@ -34,24 +35,30 @@ type Colors = ReturnType<typeof useTheme>['colors'];
 
 export default function Dashboard() {
   const { colors } = useTheme();
-  const { fy, setFy } = useFinancialYear();
+  // Read only: the year is now chosen from the header control, which every tab
+  // shows, so no screen owns the selector any more.
+  const { fy } = useFinancialYear();
 
   const [totals, setTotals] = useState<CategoryTotal[] | null>(null);
   const [status, setStatus] = useState<SubstantiationStatus | null>(null);
-  const [years, setYears] = useState<number[]>([]);
+  const [vehicle, setVehicle] = useState<VehicleCalculation | null>(null);
+  const [tripCount, setTripCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [categoryTotals, receipts, yearsWithReceipts] = await Promise.all([
+      const [categoryTotals, receipts, trips] = await Promise.all([
         receiptRepository.totalsByCategory(fy),
         receiptRepository.list(fy),
-        receiptRepository.financialYearsWithReceipts(),
+        vehicleTripRepository.list(fy),
       ]);
 
       setTotals(categoryTotals);
-      setYears(yearsWithReceipts);
+      // Kept in its own card, never folded into the receipts total: the two are
+      // computed from different records under different ATO rules, and a single
+      // figure would invite someone to claim car costs twice.
+      setVehicle(calculateVehicleClaim(trips, fy));
+      setTripCount(trips.length);
 
       // The threshold is a published figure and `substantiationStatus` throws
       // rather than assuming $300 for a year it has no rates for. A receipt
@@ -85,20 +92,6 @@ export default function Dashboard() {
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}>
-      <FinancialYearButton fy={fy} onPress={() => setPickerOpen(true)} />
-
-      <FinancialYearPicker
-        visible={pickerOpen}
-        // currentFy(), not the selected year: the current year must always be
-        // reachable, or selecting an older one on a phone with no receipts this
-        // year would leave no way back. The selected year goes in too, so it
-        // can't vanish from under the user after deleting its last receipt.
-        options={financialYearOptions([...years, fy], currentFy())}
-        selectedFy={fy}
-        onSelect={setFy}
-        onClose={() => setPickerOpen(false)}
-      />
-
       {error !== null && (
         <View
           style={[
@@ -111,29 +104,44 @@ export default function Dashboard() {
 
       {totals === null ? (
         <ActivityIndicator style={styles.loading} />
-      ) : receiptCount === 0 ? (
+      ) : receiptCount === 0 && tripCount === 0 ? (
         <EmptyYear fy={fy} colors={colors} />
       ) : (
         <>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Total claimed</Text>
+            {/* "Receipts", not "Total claimed". Car trips are a separate claim
+                under separate rules, and one combined figure would read as
+                everything the user can claim — which it isn't. */}
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Receipts</Text>
             <Text style={[styles.total, { color: colors.text }]}>
               {formatCents(totalClaimedCents)}
             </Text>
             <Text style={[styles.note, { color: colors.text }]}>
               The work-use portion of {receiptCount} {receiptCount === 1 ? 'receipt' : 'receipts'} in{' '}
-              {fyLabel(fy)}.
+              {fyLabel(fy)}. Car trips are claimed separately — see the Vehicle tab.
             </Text>
           </View>
 
-          {status === null ? (
-            <ThresholdUnavailable fy={fy} colors={colors} />
-          ) : (
-            <EvidenceCard status={status} colors={colors} />
+          {tripCount > 0 && (
+            <VehicleCard
+              fy={fy}
+              calculation={vehicle}
+              tripCount={tripCount}
+              colors={colors}
+              onPress={() => router.push('/vehicle')}
+            />
           )}
 
+          {receiptCount > 0 &&
+            (status === null ? (
+              <ThresholdUnavailable fy={fy} colors={colors} />
+            ) : (
+              <EvidenceCard status={status} colors={colors} />
+            ))}
+
+          {receiptCount > 0 && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>By category</Text>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Receipts by category</Text>
             {totals.map((total) => (
               <View key={total.categoryId} style={styles.categoryRow}>
                 <Text style={[styles.categoryName, { color: colors.text }]} numberOfLines={1}>
@@ -148,6 +156,7 @@ export default function Dashboard() {
               </View>
             ))}
           </View>
+          )}
         </>
       )}
 
@@ -226,6 +235,75 @@ function EvidenceCard({ status, colors }: { status: SubstantiationStatus; colors
 }
 
 /**
+ * The vehicle claim, deliberately its own card.
+ *
+ * Separate from the receipts total because they are different claims under
+ * different rules: cents-per-kilometre needs no receipts, covers all running
+ * costs for that car, and is excluded from the $300 evidence test. Adding the two
+ * into one "total claimed" would invite someone to also claim fuel receipts on
+ * top, which this method forbids.
+ *
+ * Tappable through to the Vehicle tab, since the per-car detail lives there.
+ */
+function VehicleCard({
+  fy,
+  calculation,
+  tripCount,
+  colors,
+  onPress,
+}: {
+  fy: number;
+  calculation: VehicleCalculation | null;
+  tripCount: number;
+  colors: Colors;
+  onPress: () => void;
+}) {
+  const trips = `${tripCount} ${tripCount === 1 ? 'trip' : 'trips'}`;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Car and vehicle claim. Opens the Vehicle tab."
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+      ]}>
+      <View style={styles.cardHeaderRow}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Car &amp; vehicle</Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.text} style={styles.chevron} />
+      </View>
+
+      {calculation === null ? (
+        <>
+          <Text style={[styles.warning, { color: colors.notification }]}>
+            {rateUnavailableMessage(fy, 'centsPerKm')}
+          </Text>
+          <Text style={[styles.note, { color: colors.text }]}>
+            Your {trips} {tripCount === 1 ? 'is' : 'are'} still saved.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={[styles.total, { color: colors.text }]}>
+            {formatCents(calculation.totalClaimableCents)}
+          </Text>
+          <Text style={[styles.note, { color: colors.text }]}>
+            {trips} at {calculation.centsPerKm}c per kilometre. Covers all running costs for the car,
+            so fuel and servicing can&apos;t also be claimed as receipts.
+          </Text>
+          {calculation.provisional && (
+            <Text style={[styles.warning, { color: colors.notification }]}>
+              {provisionalRateMessage(fy, 'centsPerKm')}
+            </Text>
+          )}
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+/**
  * Shown instead of the nudge for a year with no rates on file.
  *
  * States the reason rather than quietly omitting the card, and never falls back
@@ -281,6 +359,10 @@ const styles = StyleSheet.create({
   // The headline figure of the whole app. Tabular so it doesn't jitter as the
   // digits change between years.
   total: { fontSize: 40, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  // The chevron sits on the title's line so the card reads as one tappable unit
+  // rather than a heading with a stray arrow beside it.
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  chevron: { opacity: 0.3 },
   evidenceHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   evidenceTotal: { fontSize: 17, fontWeight: '600', fontVariant: ['tabular-nums'] },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },

@@ -120,6 +120,57 @@ already untested for this reason: it's meaningless for `:memory:`.
 
 ---
 
+### 🟠 Return-facing figures are shown in cents, but a return is in whole dollars
+
+**Found:** milestone 6, from the ATO's own worked example.
+
+The ATO's cents-per-kilometre example (published 4 May 2026, QC107246) works out
+2,514 km × 88c and states the deduction as **$2,212** — not $2,212.32. Deductions
+are entered on a return in whole dollars. The app computes and displays
+$2,212.32, which is correct arithmetic and the wrong presentation for anything
+someone copies onto a return.
+
+**Why it's not just cosmetic:** it decides whether the export in milestone 7
+matches what the taxpayer types into myTax. It also needs a direction — the ATO's
+example truncates rather than rounds half-up (32c dropped), and truncating is the
+taxpayer-safe direction for a deduction.
+
+**Why it isn't fixed yet:** cents are right for storage and for the running
+totals a user checks against receipts. Only the *return-facing* figure should be
+whole dollars, and the app has no return-facing surface until CSV/PDF export.
+Doing it now would mean guessing where that boundary sits.
+
+**How to close:** decide it in milestone 7, and apply truncation to whole dollars
+at the export boundary only. A test in `vehicleCalculator.test.ts` already pins
+the ATO example on both sides of that rounding.
+
+---
+
+### 🟡 Two spellings of one car mean two 5,000 km caps
+
+**Found:** milestone 5 (in a test). **Mitigated:** milestone 6.
+
+`vehicleLabel` is free text and kilometres group on an exact match, so `Hilux` and
+`hilux` are two cars — each with its own 5,000 km cap, quietly overstating the
+claim of anyone who mistypes.
+
+**Why it isn't fixed by normalising:** collapsing case in the calculator would
+merge labels a user may have meant to keep apart, and it would change the meaning
+of trips already saved. The fix belongs at entry, not in the arithmetic.
+
+**Mitigated by**, in the trip form: the cars already logged are offered as
+tappable chips (`vehicleLabels()`), the last-used car is prefilled, and
+`similarVehicleLabel()` warns when a typed label differs from an existing one only
+by case or spacing, offering the existing spelling in one tap.
+
+**Still open because** nothing *prevents* it. A determined user can still save
+`hilux` alongside `Hilux`, and there's no way to merge two labels after the fact.
+
+**How to close:** a rename/merge action on a car, which needs a settings surface
+that doesn't exist yet.
+
+---
+
 ### 🟡 WFH hours are stored as REAL, so totals carry float error
 
 **Found:** milestone 5.
