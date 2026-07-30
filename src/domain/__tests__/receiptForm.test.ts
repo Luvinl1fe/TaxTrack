@@ -1,7 +1,9 @@
 import {
+  BACKDATE_WARNING_FY_THRESHOLD,
   MERCHANT_MAX_LENGTH,
   NOTES_MAX_LENGTH,
   emptyReceiptForm,
+  purchaseDateWarning,
   validateReceiptForm,
   type ReceiptFormValues,
 } from '@/domain/receiptForm';
@@ -148,6 +150,72 @@ describe('error collection', () => {
       'merchant',
       'workUsePercent',
     ]);
+  });
+});
+
+describe('purchaseDateWarning', () => {
+  // Mid-FY 2026-27, so "this year" and "last year" are unambiguous.
+  const now = new Date('2026-07-30T02:00:00.000Z');
+
+  it('says nothing about a purchase in the current year', () => {
+    expect(purchaseDateWarning('2026-07-15', now)).toBeNull();
+  });
+
+  it('says nothing about last financial year, the ordinary July case', () => {
+    // Someone doing their 2025-26 return in July is the main use of this form.
+    // Warning here would train them to ignore the message.
+    expect(purchaseDateWarning('2026-05-20', now)).toBeNull();
+  });
+
+  it('says nothing about 30 June, the last day of last year', () => {
+    expect(purchaseDateWarning('2026-06-30', now)).toBeNull();
+  });
+
+  it('warns about a decade-old date', () => {
+    // The bug this exists for: 2011 typed for 2021, filed into a year the user
+    // has no reason to look in.
+    const warning = purchaseDateWarning('2011-05-20', now);
+
+    expect(warning).not.toBeNull();
+    expect(warning).toContain('16 financial years ago');
+  });
+
+  it('warns at the threshold but not one year inside it', () => {
+    const insideThreshold = 2026 - (BACKDATE_WARNING_FY_THRESHOLD - 1);
+    const atThreshold = 2026 - BACKDATE_WARNING_FY_THRESHOLD;
+
+    expect(purchaseDateWarning(`${insideThreshold}-09-01`, now)).toBeNull();
+    expect(purchaseDateWarning(`${atThreshold}-09-01`, now)).not.toBeNull();
+  });
+
+  it('does not tell the user they are wrong', () => {
+    // Backdating is legitimate — amendments, a late lodgment, a receipt found in
+    // a drawer. The copy has to prompt a check without asserting a mistake.
+    expect(purchaseDateWarning('2011-05-20', now)).toContain('Fine if you meant it');
+  });
+
+  it('warns about a future date', () => {
+    expect(purchaseDateWarning('2027-09-01', now)).toContain('in the future');
+  });
+
+  it('stays quiet for an unparseable date, which validation reports instead', () => {
+    expect(purchaseDateWarning('not-a-date', now)).toBeNull();
+    expect(purchaseDateWarning('', now)).toBeNull();
+  });
+
+  it('never blocks a save', () => {
+    // The whole point of a warning rather than an error: the form still submits.
+    const values: ReceiptFormValues = {
+      merchant: 'Officeworks',
+      amount: '49.95',
+      purchaseDate: '2011-05-20',
+      categoryId: 'stationery',
+      workUsePercent: '100',
+      notes: '',
+    };
+
+    expect(purchaseDateWarning(values.purchaseDate, now)).not.toBeNull();
+    expect(validateReceiptForm(values).ok).toBe(true);
   });
 });
 

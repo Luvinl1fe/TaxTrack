@@ -26,6 +26,14 @@ export interface ReceiptRepository {
   save(receipt: Receipt): Promise<void>;
   softDelete(id: string): Promise<void>;
   totalsByCategory(fy: number): Promise<CategoryTotal[]>;
+  /**
+   * Financial years holding at least one receipt, newest first.
+   *
+   * Drives the dashboard's year selector. Derived from the data rather than
+   * offering a fixed range, because someone entering last year's receipts in
+   * July needs that year and nobody needs a year they never used.
+   */
+  financialYearsWithReceipts(): Promise<number[]>;
 }
 
 export interface WfhLogRepository {
