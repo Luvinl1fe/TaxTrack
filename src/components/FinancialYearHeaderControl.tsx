@@ -15,7 +15,11 @@ import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { FinancialYearButton, FinancialYearPicker } from '@/components/FinancialYearPicker';
-import { receiptRepository, vehicleTripRepository } from '@/db/receiptRepository';
+import {
+  receiptRepository,
+  vehicleTripRepository,
+  wfhLogRepository,
+} from '@/db/receiptRepository';
 import { financialYearOptions } from '@/domain/receiptList';
 import { currentFy } from '@/lib/financialYear';
 import { useFinancialYear } from '@/state/financialYear';
@@ -37,12 +41,14 @@ export function FinancialYearHeaderControl() {
 
     void (async () => {
       try {
-        // Both sources: a year may hold trips but no receipts, or the reverse.
-        const [receiptYears, tripYears] = await Promise.all([
+        // Every source, because a year may hold any one of the three and none of
+        // the others — a year spent only logging hours still has to be reachable.
+        const [receiptYears, tripYears, logYears] = await Promise.all([
           receiptRepository.financialYearsWithReceipts(),
           vehicleTripRepository.financialYearsWithTrips(),
+          wfhLogRepository.financialYearsWithLogs(),
         ]);
-        setYears([...receiptYears, ...tripYears]);
+        setYears([...receiptYears, ...tripYears, ...logYears]);
       } catch {
         // A failed lookup shouldn't trap the user in the current year: the
         // options fall back to whatever is already known plus the current year.

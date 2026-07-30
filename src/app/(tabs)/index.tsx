@@ -17,7 +17,11 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { provisionalRateMessage, rateUnavailableMessage } from '@/config/atoRates';
-import { receiptRepository, vehicleTripRepository } from '@/db/receiptRepository';
+import {
+  receiptRepository,
+  vehicleTripRepository,
+  wfhLogRepository,
+} from '@/db/receiptRepository';
 import { categoryName } from '@/domain/receiptList';
 import {
   substantiationMessage,
@@ -27,6 +31,8 @@ import {
 } from '@/domain/substantiation';
 import type { CategoryTotal } from '@/domain/types';
 import { calculateVehicleClaim, type VehicleCalculation } from '@/domain/vehicleCalculator';
+import { calculateWfhClaim, type WfhCalculation } from '@/domain/wfhCalculator';
+import { formatHours } from '@/domain/wfhForm';
 import { fyLabel } from '@/lib/financialYear';
 import { formatCents } from '@/lib/money';
 import { useFinancialYear } from '@/state/financialYear';
@@ -43,14 +49,17 @@ export default function Dashboard() {
   const [status, setStatus] = useState<SubstantiationStatus | null>(null);
   const [vehicle, setVehicle] = useState<VehicleCalculation | null>(null);
   const [tripCount, setTripCount] = useState(0);
+  const [wfh, setWfh] = useState<WfhCalculation | null>(null);
+  const [logCount, setLogCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [categoryTotals, receipts, trips] = await Promise.all([
+      const [categoryTotals, receipts, trips, logs] = await Promise.all([
         receiptRepository.totalsByCategory(fy),
         receiptRepository.list(fy),
         vehicleTripRepository.list(fy),
+        wfhLogRepository.list(fy),
       ]);
 
       setTotals(categoryTotals);
@@ -59,6 +68,8 @@ export default function Dashboard() {
       // figure would invite someone to claim car costs twice.
       setVehicle(calculateVehicleClaim(trips, fy));
       setTripCount(trips.length);
+      setWfh(calculateWfhClaim(logs, fy));
+      setLogCount(logs.length);
 
       // The threshold is a published figure and `substantiationStatus` throws
       // rather than assuming $300 for a year it has no rates for. A receipt
@@ -104,7 +115,7 @@ export default function Dashboard() {
 
       {totals === null ? (
         <ActivityIndicator style={styles.loading} />
-      ) : receiptCount === 0 && tripCount === 0 ? (
+      ) : receiptCount === 0 && tripCount === 0 && logCount === 0 ? (
         <EmptyYear fy={fy} colors={colors} />
       ) : (
         <>
@@ -118,7 +129,8 @@ export default function Dashboard() {
             </Text>
             <Text style={[styles.note, { color: colors.text }]}>
               The work-use portion of {receiptCount} {receiptCount === 1 ? 'receipt' : 'receipts'} in{' '}
-              {fyLabel(fy)}. Car trips are claimed separately — see the Vehicle tab.
+              {fyLabel(fy)}. Car trips and hours worked from home are claimed separately, on their
+              own tabs.
             </Text>
           </View>
 
@@ -129,6 +141,16 @@ export default function Dashboard() {
               tripCount={tripCount}
               colors={colors}
               onPress={() => router.push('/vehicle')}
+            />
+          )}
+
+          {logCount > 0 && (
+            <WfhCard
+              fy={fy}
+              calculation={wfh}
+              logCount={logCount}
+              colors={colors}
+              onPress={() => router.push('/wfh')}
             />
           )}
 
@@ -295,6 +317,74 @@ function VehicleCard({
           {calculation.provisional && (
             <Text style={[styles.warning, { color: colors.notification }]}>
               {provisionalRateMessage(fy, 'centsPerKm')}
+            </Text>
+          )}
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * The working-from-home claim, its own card for the same reason as the vehicle
+ * one: the fixed rate covers electricity, gas, phone, internet and stationery, so
+ * folding it into the receipts total would hide the fact that those receipts
+ * can't also be claimed. The Home tab does the actual conflict check.
+ *
+ * Labelled "Estimate" rather than "Claimable" while the rate is provisional, so
+ * the caveat survives even at a glance on the dashboard.
+ */
+function WfhCard({
+  fy,
+  calculation,
+  logCount,
+  colors,
+  onPress,
+}: {
+  fy: number;
+  calculation: WfhCalculation | null;
+  logCount: number;
+  colors: Colors;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Working from home claim. Opens the Home tab."
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+      ]}>
+      <View style={styles.cardHeaderRow}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>
+          Working from home{calculation?.provisional === true ? ' · estimate' : ''}
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.text} style={styles.chevron} />
+      </View>
+
+      {calculation === null ? (
+        <>
+          <Text style={[styles.warning, { color: colors.notification }]}>
+            {rateUnavailableMessage(fy, 'wfhCentsPerHour')}
+          </Text>
+          <Text style={[styles.note, { color: colors.text }]}>
+            Your hours are still saved — {logCount} {logCount === 1 ? 'entry' : 'entries'}.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={[styles.total, { color: colors.text }]}>
+            {formatCents(calculation.claimableCents)}
+          </Text>
+          <Text style={[styles.note, { color: colors.text }]}>
+            {formatHours(calculation.totalHours)} at {calculation.centsPerHour}c per hour. Covers
+            electricity, gas, phone, internet and stationery, so those can&apos;t also be claimed as
+            receipts.
+          </Text>
+          {calculation.provisional && (
+            <Text style={[styles.warning, { color: colors.notification }]}>
+              {provisionalRateMessage(fy, 'wfhCentsPerHour')}
             </Text>
           )}
         </>

@@ -63,6 +63,17 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="wfh"
+        options={{
+          // "Home", not "WFH": an acronym is jargon to someone doing this once a
+          // year, and the tab bar has room for the plain word.
+          title: 'Home',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

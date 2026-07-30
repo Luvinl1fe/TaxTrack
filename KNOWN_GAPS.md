@@ -53,9 +53,11 @@ real unit tests on logic and minimal UI testing. Form logic, then search,
 grouping and year selection, were each extracted into pure modules specifically
 so the untested surface stays thin.
 
-**Verified instead by:** a hand pass on device, 30 July 2026 — both tabs, the year
-sheet, sticky headers, search, both empty states, the delete confirmation, and an
-edit refreshing both tabs on return.
+**Verified instead by:** hand passes on device, 30 July 2026 — all four tabs, the
+year sheet, sticky headers, search, every empty state, the delete confirmations,
+and an edit refreshing the other tabs on return. Milestone 6 added the vehicle cap
+bars, the car-name chips, the duplicate-day warning and the double-claim card to
+that pass.
 
 **What's untested but not trivial**, and so worth re-checking by hand after any
 change to the dashboard or list:
@@ -84,20 +86,6 @@ force-quit, reopen, photo still renders.
 **Watch for:** the cache-to-documents copy is the part that matters. If it ever
 regresses, photos vanish weeks later rather than immediately, so a manual check
 right after saving would not catch it.
-
----
-
-### 🟠 `SqliteWfhLogRepository` and `SqliteVehicleTripRepository` have never run on a device
-
-**Found:** milestone 3. **Narrowed:** milestone 5.
-
-Both are now executed by the `better-sqlite3` tests — save, get, list, the
-soft-delete filter, `totalHours` and `kilometresByVehicle` all run real SQL. What
-remains is that no screen has ever called them, so nothing has exercised them
-against the device's own SQLite build or with data a user actually typed.
-
-**How to close:** milestone 6 (WFH + vehicle calculators), where the screens
-arrive and the done-when check runs on the phone.
 
 ---
 
@@ -168,24 +156,6 @@ by case or spacing, offering the existing spelling in one tap.
 
 **How to close:** a rename/merge action on a car, which needs a settings surface
 that doesn't exist yet.
-
----
-
-### 🟡 WFH hours are stored as REAL, so totals carry float error
-
-**Found:** milestone 5.
-
-`wfh_logs.hours` is REAL and `totalHours` is a SQL `SUM()`. Ordinary values like
-7.6 aren't exactly representable, so a year of logs can total a hair off the
-decimal figure — `19.75` is exact, `19.7` is not.
-
-**Why it's accepted for now:** nothing consumes the total yet. Money is integer
-cents everywhere precisely to avoid this; hours escaped that rule because they
-are genuinely fractional.
-
-**How to close:** milestone 6 has to decide where hours get rounded on the way
-to a deduction — once, at the end, on `hours × cents-per-hour` — and test that
-figure rather than the raw sum.
 
 ---
 
@@ -276,6 +246,57 @@ year.
 ---
 
 ## Closed
+
+### 🟠 `SqliteWfhLogRepository` and `SqliteVehicleTripRepository` had never executed
+
+**Found:** milestone 3. **Narrowed:** milestone 5. **Closed:** milestone 6.
+
+Both were written and typechecked but had never been called — not by a test, not
+by a screen. Typechecking proved the shapes lined up and said nothing about
+whether the SQL ran.
+
+**Closed in three steps:**
+
+1. Milestone 5's `better-sqlite3` harness executed the real statements in Node —
+   save, get, list, the soft-delete filter, `totalHours` and
+   `kilometresByVehicle`.
+2. Milestone 6 gave both repositories real screens, so they run in the app rather
+   than only under Jest.
+3. Both were exercised on a device on 30 July 2026: trips and hours logged,
+   edited and deleted, surviving a force-quit and reopen.
+
+**What this does not cover:** nothing verifies these paths automatically at the
+screen level — see the open screen-testing gap. The device pass is a point-in-time
+check, not a regression test.
+
+---
+
+### 🟡 WFH hours are stored as REAL, so totals carry float error
+
+**Found:** milestone 5. **Closed:** milestone 6.
+
+`wfh_logs.hours` is REAL, so ordinary values like 7.6 aren't exactly
+representable and a year of logs can total a hair off the decimal figure —
+`19.75` is exact, `19.7` is not.
+
+**Closed by deciding where the rounding happens**, which was the open question:
+`calculateWfhClaim()` sums the hours and rounds **once**, at the end, on
+`hours × cents-per-hour`. A residue of ~1e-15 hours cannot survive a rounding to
+whole cents, so the float error can no longer reach a figure the user sees.
+
+Two tests pin it: `7.6 + 2.4` — which is `10.000000000000002` in IEEE 754 —
+produces exactly 700 cents, and the calculator's TypeScript sum is asserted
+against SQL's `SUM()` with the rounded cents required to be *identical* rather
+than merely close.
+
+`formatHours()` rounds for display the same way, so the same sum never renders as
+`10.000000000000002 hours`.
+
+**What isn't claimed:** hours are still REAL in the database. That's deliberate —
+they are genuinely fractional, unlike money — and it no longer matters, because
+nothing consumes the raw sum.
+
+---
 
 ### 🟠 The repositories have no automated tests
 

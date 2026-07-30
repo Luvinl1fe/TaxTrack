@@ -43,6 +43,13 @@ export interface WfhLogRepository {
   softDelete(id: string): Promise<void>;
   /** Total hours worked from home in the year. */
   totalHours(fy: number): Promise<number>;
+  /**
+   * Financial years holding at least one log, newest first.
+   *
+   * Unioned into the year selector alongside the receipt and trip years, so a
+   * year spent only logging hours is still reachable.
+   */
+  financialYearsWithLogs(): Promise<number[]>;
 }
 
 export interface VehicleTripRepository {

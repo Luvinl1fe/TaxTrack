@@ -176,6 +176,17 @@ class SqliteWfhLogRepository implements WfhLogRepository {
     );
     return row?.total ?? 0;
   }
+
+  async financialYearsWithLogs(): Promise<number[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<{ financial_year: number }>(
+      `SELECT DISTINCT financial_year
+       FROM wfh_logs
+       WHERE deleted_at IS NULL
+       ORDER BY financial_year DESC`,
+    );
+    return rows.map((row) => row.financial_year);
+  }
 }
 
 class SqliteVehicleTripRepository implements VehicleTripRepository {
