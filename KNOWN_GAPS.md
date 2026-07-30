@@ -40,19 +40,29 @@ what that window is.
 
 ### 🟠 No screen has an automated test
 
-**Found:** milestone 4.
+**Found:** milestone 4. **Widened:** milestone 5.
 
-Validation (`receiptForm.ts`), money and the FY module are covered. The screens
-that use them are not: nothing verifies that a save actually reaches the
-repository, that the form loads an existing receipt into its fields, or that
-returning from the form refreshes the list.
+Validation (`receiptForm.ts`), search and grouping (`receiptList.ts`), money and
+the FY module are covered. The screens that use them are not: nothing verifies
+that a save reaches the repository, that the form loads an existing receipt into
+its fields, that returning from the form refreshes the list, or that the tab bar
+and year selector wire up as intended.
 
 **Why it exists:** a deliberate MVP trade-off — `PHASE_1_PLAN.md` §10 calls for
-real unit tests on logic and minimal UI testing. Form logic was extracted into a
-pure module specifically so the untested surface is thin.
+real unit tests on logic and minimal UI testing. Form logic, then search,
+grouping and year selection, were each extracted into pure modules specifically
+so the untested surface stays thin.
 
-**How to close:** `@testing-library/react-native` on the receipt form, if the
-screens start carrying logic of their own rather than delegating to modules.
+**What's untested but not trivial**, and so worth checking by hand after any
+change to the dashboard or list:
+
+- `useFocusEffect` refresh — the reason a saved receipt appears without a reload
+- the shared `FinancialYearProvider`, which both tabs read
+- `SectionList` sticky headers and the search box's fixed position above it
+
+**How to close:** `@testing-library/react-native` on the receipt form and the
+list, if the screens start carrying logic of their own rather than delegating to
+modules.
 
 ---
 
@@ -139,7 +149,25 @@ with no account and no infrastructure cost.
 out), fully by milestone 8 (Firebase sync).
 
 **Also needs:** onboarding copy that says this plainly. A user should learn it
-when they start, not when they lose their phone.
+when they start, not when they lose their phone. Milestone 5 puts one line on the
+dashboard's empty state — "Receipts are stored on this phone only. There is no
+backup yet." — which a first-time user sees, but it disappears as soon as they
+add a receipt. A permanent home for it is still missing.
+
+---
+
+### 🟡 The disclaimer appears in only one of its three required places
+
+**Found:** milestone 5.
+
+`PHASE_1_PLAN.md` §6 requires "not tax advice" on the first-run onboarding
+screen, in settings, and in the footer of every export. Only the dashboard footer
+carries it today, and neither an onboarding nor a settings screen exists.
+
+**How to close:** the export footers in milestone 7, which also brings the
+settings screen. Onboarding has no milestone of its own yet — worth deciding
+before the validation checkpoint at milestone 7, since it's also where the
+local-only storage warning above belongs.
 
 ---
 

@@ -10,6 +10,7 @@ import { migrate, seedCategories, setDatabaseForTests } from '@/db/database';
 import type { SqliteDatabase } from '@/db/driver';
 import { receiptRepository } from '@/db/receiptRepository';
 import { createReceipt, type NewReceiptInput } from '@/domain/factories';
+import { financialYearOptions, groupByCategory, totalClaimedCents } from '@/domain/receiptList';
 import { substantiationStatus } from '@/domain/substantiation';
 import { deductibleCents, type Receipt } from '@/domain/types';
 import { createTestDatabase } from '../../../test-support/sqliteTestDatabase';
@@ -306,6 +307,95 @@ describe('totalsByCategory', () => {
     expect(await receiptRepository.totalsByCategory(FY)).toEqual([
       { categoryId: 'stationery', totalCents: 0, receiptCount: 1 },
     ]);
+  });
+});
+
+describe('financialYearsWithReceipts', () => {
+  it('is empty on first launch', async () => {
+    // The dashboard adds the current year itself; the query must not invent one.
+    expect(await receiptRepository.financialYearsWithReceipts()).toEqual([]);
+  });
+
+  it('lists each year once, newest first', async () => {
+    await saveAll([
+      receipt({ id: 'a', purchaseDate: '2023-09-01' }),
+      receipt({ id: 'b', purchaseDate: '2025-08-15' }),
+      receipt({ id: 'c', purchaseDate: '2025-12-24' }),
+      receipt({ id: 'd', purchaseDate: '2024-07-01' }),
+    ]);
+
+    expect(await receiptRepository.financialYearsWithReceipts()).toEqual([2025, 2024, 2023]);
+  });
+
+  it('surfaces a decade-old receipt so the year selector can reach it', async () => {
+    // Found on device against the milestone 3/4 dev screen, which hardcoded
+    // currentFy(): a receipt backdated to 2011 saved correctly but no screen
+    // could ever display its year. The selector is data-derived precisely so any
+    // year holding a receipt is reachable.
+    await saveAll([
+      receipt({ id: 'old', purchaseDate: '2011-05-20' }),
+      receipt({ id: 'now', purchaseDate: '2025-08-15' }),
+    ]);
+
+    const years = await receiptRepository.financialYearsWithReceipts();
+
+    // May 2011 falls in FY 2010-11, so the year is 2010 — not 2011.
+    expect(years).toEqual([2025, 2010]);
+    expect(financialYearOptions(years, 2026)).toEqual([2026, 2025, 2010]);
+    expect((await receiptRepository.list(2010)).map((r) => r.id)).toEqual(['old']);
+  });
+
+  it('drops a year once its only receipt is deleted', async () => {
+    await saveAll([
+      receipt({ id: 'kept', purchaseDate: '2025-08-15' }),
+      receipt({ id: 'binned', purchaseDate: '2023-09-01' }),
+    ]);
+
+    await receiptRepository.softDelete('binned');
+
+    expect(await receiptRepository.financialYearsWithReceipts()).toEqual([2025]);
+  });
+});
+
+describe('the dashboard and the receipt list agree', () => {
+  it('groups and totals identically in SQL and in TypeScript', async () => {
+    const receipts = [
+      receipt({ id: 'a', categoryId: 'tools-equipment', amountCents: 120000, workUsePercent: 60 }),
+      receipt({ id: 'b', categoryId: 'tools-equipment', amountCents: 8999, workUsePercent: 33 }),
+      receipt({ id: 'c', categoryId: 'stationery', amountCents: 4995, workUsePercent: 50 }),
+      receipt({ id: 'd', categoryId: 'phone-internet', amountCents: 11000, workUsePercent: 45 }),
+    ];
+    await saveAll(receipts);
+
+    // The dashboard reads totalsByCategory (SQL); the receipt list groups the
+    // rows in TypeScript. Same screen, same figures — they have to match in both
+    // value and order or the app contradicts itself.
+    const fromSql = await receiptRepository.totalsByCategory(FY);
+    const fromTypeScript = groupByCategory(await receiptRepository.list(FY));
+
+    expect(fromTypeScript.map((group) => group.categoryId)).toEqual(
+      fromSql.map((total) => total.categoryId),
+    );
+    expect(fromTypeScript.map((group) => group.totalCents)).toEqual(
+      fromSql.map((total) => total.totalCents),
+    );
+    expect(fromTypeScript.map((group) => group.receipts.length)).toEqual(
+      fromSql.map((total) => total.receiptCount),
+    );
+  });
+
+  it('reports the same total claimed as the sum of the SQL categories', async () => {
+    await saveAll([
+      receipt({ id: 'a', categoryId: 'tools-equipment', amountCents: 8999, workUsePercent: 33 }),
+      receipt({ id: 'b', categoryId: 'stationery', amountCents: 4995, workUsePercent: 50 }),
+    ]);
+
+    const fromSql = (await receiptRepository.totalsByCategory(FY)).reduce(
+      (sum, total) => sum + total.totalCents,
+      0,
+    );
+
+    expect(totalClaimedCents(await receiptRepository.list(FY))).toBe(fromSql);
   });
 });
 

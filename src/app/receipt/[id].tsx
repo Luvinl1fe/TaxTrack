@@ -36,6 +36,7 @@ import { categoryById } from '@/domain/categories';
 import { createReceipt } from '@/domain/factories';
 import {
   emptyReceiptForm,
+  purchaseDateWarning,
   validateReceiptForm,
   type ReceiptFormErrors,
   type ReceiptFormValues,
@@ -133,6 +134,16 @@ export default function ReceiptFormScreen() {
       return null;
     }
   }, [values.purchaseDate]);
+
+  /**
+   * A note when the date looks like a typo. The hint above already says which FY
+   * the receipt lands in; this says when that year is far enough away to be
+   * worth a second look. It never blocks saving — see `purchaseDateWarning`.
+   */
+  const dateWarning = useMemo(
+    () => purchaseDateWarning(values.purchaseDate),
+    [values.purchaseDate],
+  );
 
   const pickPhoto = useCallback(async (source: 'camera' | 'library') => {
     const permission =
@@ -285,6 +296,7 @@ export default function ReceiptFormScreen() {
         <FormField
           label="Date"
           error={errors.purchaseDate}
+          warning={dateWarning ?? undefined}
           hint={
             financialYear === null
               ? undefined
