@@ -176,6 +176,17 @@ class SqliteWfhLogRepository implements WfhLogRepository {
     );
     return row?.total ?? 0;
   }
+
+  async financialYearsWithLogs(): Promise<number[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<{ financial_year: number }>(
+      `SELECT DISTINCT financial_year
+       FROM wfh_logs
+       WHERE deleted_at IS NULL
+       ORDER BY financial_year DESC`,
+    );
+    return rows.map((row) => row.financial_year);
+  }
 }
 
 class SqliteVehicleTripRepository implements VehicleTripRepository {
@@ -228,6 +239,32 @@ class SqliteVehicleTripRepository implements VehicleTripRepository {
       [fy],
     );
     return rows.map((row) => ({ vehicleLabel: row.vehicle_label, kilometres: row.kilometres }));
+  }
+
+  async vehicleLabels(): Promise<string[]> {
+    const db = await getDatabase();
+    // Across every year, not just the current one: the same car is normally
+    // driven year after year, and the point is to stop the user retyping a label
+    // that must match exactly to share a cap.
+    const rows = await db.getAllAsync<{ vehicle_label: string }>(
+      `SELECT vehicle_label
+       FROM vehicle_trips
+       WHERE deleted_at IS NULL
+       GROUP BY vehicle_label
+       ORDER BY MAX(created_at) DESC`,
+    );
+    return rows.map((row) => row.vehicle_label);
+  }
+
+  async financialYearsWithTrips(): Promise<number[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<{ financial_year: number }>(
+      `SELECT DISTINCT financial_year
+       FROM vehicle_trips
+       WHERE deleted_at IS NULL
+       ORDER BY financial_year DESC`,
+    );
+    return rows.map((row) => row.financial_year);
   }
 }
 

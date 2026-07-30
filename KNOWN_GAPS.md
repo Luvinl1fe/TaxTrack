@@ -53,9 +53,11 @@ real unit tests on logic and minimal UI testing. Form logic, then search,
 grouping and year selection, were each extracted into pure modules specifically
 so the untested surface stays thin.
 
-**Verified instead by:** a hand pass on device, 30 July 2026 — both tabs, the year
-sheet, sticky headers, search, both empty states, the delete confirmation, and an
-edit refreshing both tabs on return.
+**Verified instead by:** hand passes on device, 30 July 2026 — all four tabs, the
+year sheet, sticky headers, search, every empty state, the delete confirmations,
+and an edit refreshing the other tabs on return. Milestone 6 added the vehicle cap
+bars, the car-name chips, the duplicate-day warning and the double-claim card to
+that pass.
 
 **What's untested but not trivial**, and so worth re-checking by hand after any
 change to the dashboard or list:
@@ -87,20 +89,6 @@ right after saving would not catch it.
 
 ---
 
-### 🟠 `SqliteWfhLogRepository` and `SqliteVehicleTripRepository` have never run on a device
-
-**Found:** milestone 3. **Narrowed:** milestone 5.
-
-Both are now executed by the `better-sqlite3` tests — save, get, list, the
-soft-delete filter, `totalHours` and `kilometresByVehicle` all run real SQL. What
-remains is that no screen has ever called them, so nothing has exercised them
-against the device's own SQLite build or with data a user actually typed.
-
-**How to close:** milestone 6 (WFH + vehicle calculators), where the screens
-arrive and the done-when check runs on the phone.
-
----
-
 ### 🟡 Repository tests run on `better-sqlite3`, not the device's SQLite
 
 **Found:** milestone 5.
@@ -120,21 +108,54 @@ already untested for this reason: it's meaningless for `:memory:`.
 
 ---
 
-### 🟡 WFH hours are stored as REAL, so totals carry float error
+### 🟠 Return-facing figures are shown in cents, but a return is in whole dollars
 
-**Found:** milestone 5.
+**Found:** milestone 6, from the ATO's own worked example.
 
-`wfh_logs.hours` is REAL and `totalHours` is a SQL `SUM()`. Ordinary values like
-7.6 aren't exactly representable, so a year of logs can total a hair off the
-decimal figure — `19.75` is exact, `19.7` is not.
+The ATO's cents-per-kilometre example (published 4 May 2026, QC107246) works out
+2,514 km × 88c and states the deduction as **$2,212** — not $2,212.32. Deductions
+are entered on a return in whole dollars. The app computes and displays
+$2,212.32, which is correct arithmetic and the wrong presentation for anything
+someone copies onto a return.
 
-**Why it's accepted for now:** nothing consumes the total yet. Money is integer
-cents everywhere precisely to avoid this; hours escaped that rule because they
-are genuinely fractional.
+**Why it's not just cosmetic:** it decides whether the export in milestone 7
+matches what the taxpayer types into myTax. It also needs a direction — the ATO's
+example truncates rather than rounds half-up (32c dropped), and truncating is the
+taxpayer-safe direction for a deduction.
 
-**How to close:** milestone 6 has to decide where hours get rounded on the way
-to a deduction — once, at the end, on `hours × cents-per-hour` — and test that
-figure rather than the raw sum.
+**Why it isn't fixed yet:** cents are right for storage and for the running
+totals a user checks against receipts. Only the *return-facing* figure should be
+whole dollars, and the app has no return-facing surface until CSV/PDF export.
+Doing it now would mean guessing where that boundary sits.
+
+**How to close:** decide it in milestone 7, and apply truncation to whole dollars
+at the export boundary only. A test in `vehicleCalculator.test.ts` already pins
+the ATO example on both sides of that rounding.
+
+---
+
+### 🟡 Two spellings of one car mean two 5,000 km caps
+
+**Found:** milestone 5 (in a test). **Mitigated:** milestone 6.
+
+`vehicleLabel` is free text and kilometres group on an exact match, so `Hilux` and
+`hilux` are two cars — each with its own 5,000 km cap, quietly overstating the
+claim of anyone who mistypes.
+
+**Why it isn't fixed by normalising:** collapsing case in the calculator would
+merge labels a user may have meant to keep apart, and it would change the meaning
+of trips already saved. The fix belongs at entry, not in the arithmetic.
+
+**Mitigated by**, in the trip form: the cars already logged are offered as
+tappable chips (`vehicleLabels()`), the last-used car is prefilled, and
+`similarVehicleLabel()` warns when a typed label differs from an existing one only
+by case or spacing, offering the existing spelling in one tap.
+
+**Still open because** nothing *prevents* it. A determined user can still save
+`hilux` alongside `Hilux`, and there's no way to merge two labels after the fact.
+
+**How to close:** a rename/merge action on a car, which needs a settings surface
+that doesn't exist yet.
 
 ---
 
@@ -175,19 +196,38 @@ local-only storage warning above belongs.
 
 ---
 
-### 🔴 The 2026–27 WFH fixed rate is unpublished
+### 🔴 The 2026–27 WFH fixed rate is unpublished — a provisional 70c stands in
 
-**Found:** milestone 2. Tracked in `PHASE_1_PLAN.md` §12.
+**Found:** milestone 2. **Provisional value added:** milestone 6. Tracked in
+`PHASE_1_PLAN.md` §12.
 
-`ATO_RATES[2026].wfhCentsPerHour` is `null`. The ATO's Fixed rate method page
-(last updated 8 June 2026) still lists rates only through 2025–26.
+`ATO_RATES[2026].wfhCentsPerHour` is still `null`. The ATO's Fixed rate method
+page listed rates only through 2025–26 as at 8 June 2026, and it returns 403 to
+automated fetches, so it has to be checked by hand.
 
-**Why it exists:** blocked on the ATO, not on us. The config deliberately holds
-`null` rather than carrying last year's 70c forward, because a stale rate
+**Why it exists:** blocked on the ATO, not on us. The published field deliberately
+holds `null` rather than carrying last year's 70c forward, because a stale rate
 produces a confidently wrong deduction.
 
-**How to close:** set the rate once published. It's a release gate for the WFH
-calculator (milestone 6), not a research task.
+**What changed in milestone 6:** so development isn't stalled, `ATO_RATES[2026]`
+now carries `provisional: { wfhCentsPerHour: 70 }` — the last published figure.
+The safety property is structural rather than a matter of discipline:
+
+- `getRate()` and `ratesForFy().wfhCentsPerHour` still return `null`. Every
+  existing caller behaves exactly as before, and a test asserts this.
+- The only route to the number is `resolveRate()`, which returns
+  `{ cents, provisional: true }`. The flag is in the same object as the value, so
+  no caller can obtain the figure without learning it is an assumption.
+- Any screen showing such a figure must render `provisionalRateMessage()`, which
+  ends "don't put it on your return".
+
+**Why this is still 🔴 and not downgraded:** a provisional rate is fine for
+building and testing, and unacceptable in a released app. Shipping it would put
+an estimate in front of someone preparing a return.
+
+**How to close:** set `wfhCentsPerHour` once the ATO publishes, and delete the
+`provisional` block for 2026. A test enforces that a provisional value only ever
+exists where the published one is `null`, so leaving both would fail.
 
 ---
 
@@ -206,6 +246,57 @@ year.
 ---
 
 ## Closed
+
+### 🟠 `SqliteWfhLogRepository` and `SqliteVehicleTripRepository` had never executed
+
+**Found:** milestone 3. **Narrowed:** milestone 5. **Closed:** milestone 6.
+
+Both were written and typechecked but had never been called — not by a test, not
+by a screen. Typechecking proved the shapes lined up and said nothing about
+whether the SQL ran.
+
+**Closed in three steps:**
+
+1. Milestone 5's `better-sqlite3` harness executed the real statements in Node —
+   save, get, list, the soft-delete filter, `totalHours` and
+   `kilometresByVehicle`.
+2. Milestone 6 gave both repositories real screens, so they run in the app rather
+   than only under Jest.
+3. Both were exercised on a device on 30 July 2026: trips and hours logged,
+   edited and deleted, surviving a force-quit and reopen.
+
+**What this does not cover:** nothing verifies these paths automatically at the
+screen level — see the open screen-testing gap. The device pass is a point-in-time
+check, not a regression test.
+
+---
+
+### 🟡 WFH hours are stored as REAL, so totals carry float error
+
+**Found:** milestone 5. **Closed:** milestone 6.
+
+`wfh_logs.hours` is REAL, so ordinary values like 7.6 aren't exactly
+representable and a year of logs can total a hair off the decimal figure —
+`19.75` is exact, `19.7` is not.
+
+**Closed by deciding where the rounding happens**, which was the open question:
+`calculateWfhClaim()` sums the hours and rounds **once**, at the end, on
+`hours × cents-per-hour`. A residue of ~1e-15 hours cannot survive a rounding to
+whole cents, so the float error can no longer reach a figure the user sees.
+
+Two tests pin it: `7.6 + 2.4` — which is `10.000000000000002` in IEEE 754 —
+produces exactly 700 cents, and the calculator's TypeScript sum is asserted
+against SQL's `SUM()` with the rounded cents required to be *identical* rather
+than merely close.
+
+`formatHours()` rounds for display the same way, so the same sum never renders as
+`10.000000000000002 hours`.
+
+**What isn't claimed:** hours are still REAL in the database. That's deliberate —
+they are genuinely fractional, unlike money — and it no longer matters, because
+nothing consumes the raw sum.
+
+---
 
 ### 🟠 The repositories have no automated tests
 

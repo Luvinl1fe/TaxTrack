@@ -10,6 +10,9 @@ import { migrate, seedCategories, setDatabaseForTests } from '@/db/database';
 import type { SqliteDatabase } from '@/db/driver';
 import { vehicleTripRepository, wfhLogRepository } from '@/db/receiptRepository';
 import { createVehicleTrip, createWfhLog } from '@/domain/factories';
+import { financialYearOptions } from '@/domain/receiptList';
+import { calculateVehicleClaim } from '@/domain/vehicleCalculator';
+import { calculateWfhClaim } from '@/domain/wfhCalculator';
 import type { VehicleTrip, WfhLog } from '@/domain/types';
 import { createTestDatabase } from '../../../test-support/sqliteTestDatabase';
 
@@ -84,6 +87,30 @@ describe('wfhLogRepository', () => {
     expect((await wfhLogRepository.list(FY)).map((l) => l.id)).toEqual(['dec', 'aug']);
   });
 
+  describe('financialYearsWithLogs', () => {
+    it('is empty before any log exists', async () => {
+      expect(await wfhLogRepository.financialYearsWithLogs()).toEqual([]);
+    });
+
+    it('reaches a year that has hours but no receipts or trips', async () => {
+      await wfhLogRepository.save(log('a', '2023-09-01', 8));
+      await wfhLogRepository.save(log('b', '2025-08-15', 8));
+
+      const years = await wfhLogRepository.financialYearsWithLogs();
+
+      expect(years).toEqual([2025, 2023]);
+      expect(financialYearOptions(years, 2026)).toEqual([2026, 2025, 2023]);
+    });
+
+    it('drops a year once its only log is deleted', async () => {
+      await wfhLogRepository.save(log('kept', '2025-08-15', 8));
+      await wfhLogRepository.save(log('binned', '2023-09-01', 8));
+      await wfhLogRepository.softDelete('binned');
+
+      expect(await wfhLogRepository.financialYearsWithLogs()).toEqual([2025]);
+    });
+  });
+
   it('hides soft-deleted logs', async () => {
     await wfhLogRepository.save(log('kept', '2025-08-15', 8));
     await wfhLogRepository.save(log('binned', '2025-08-16', 8));
@@ -108,6 +135,21 @@ describe('wfhLogRepository', () => {
       // SUM() over no rows is NULL in SQL. Reaching the WFH calculator as null
       // would produce a NaN deduction.
       expect(await wfhLogRepository.totalHours(FY)).toBe(0);
+    });
+
+    it('agrees with the calculator, which sums the same logs in TypeScript', async () => {
+      // SQL SUM() over REAL and a TypeScript reduce can differ in the last bits.
+      // Both feed figures a user sees, so the difference must stay below a cent.
+      await wfhLogRepository.save(log('a', '2025-08-15', 7.6));
+      await wfhLogRepository.save(log('b', '2025-08-16', 2.4));
+      await wfhLogRepository.save(log('c', '2025-08-17', 4.25));
+
+      const fromSql = await wfhLogRepository.totalHours(FY);
+      const calculated = calculateWfhClaim(await wfhLogRepository.list(FY), FY);
+
+      expect(calculated?.totalHours).toBeCloseTo(fromSql, 10);
+      // And the figure that actually matters is identical, because it's rounded.
+      expect(calculated?.claimableCents).toBe(Math.round(fromSql * 70));
     });
 
     it('excludes soft-deleted logs and other years', async () => {
@@ -213,6 +255,82 @@ describe('vehicleTripRepository', () => {
       expect(await vehicleTripRepository.kilometresByVehicle(FY)).toEqual([
         { vehicleLabel: 'Hilux', kilometres: 100 },
       ]);
+    });
+
+    it('agrees with the calculator, which groups the same trips in TypeScript', async () => {
+      // Same reasoning as the dashboard/list agreement in milestone 5: two code
+      // paths group the same rows, and a screen showing both must not be able to
+      // contradict itself.
+      await vehicleTripRepository.save(trip('a', '2025-08-15', 120, 'Hilux'));
+      await vehicleTripRepository.save(trip('b', '2025-08-16', 80.5, 'Hilux'));
+      await vehicleTripRepository.save(trip('c', '2025-08-17', 300, 'Corolla'));
+
+      const fromSql = await vehicleTripRepository.kilometresByVehicle(FY);
+      const calculated = calculateVehicleClaim(await vehicleTripRepository.list(FY), FY);
+
+      expect(calculated?.claims.map((claim) => claim.vehicleLabel)).toEqual(
+        fromSql.map((row) => row.vehicleLabel),
+      );
+      for (const [index, claim] of (calculated?.claims ?? []).entries()) {
+        expect(claim.kilometres).toBeCloseTo(fromSql[index].kilometres, 10);
+      }
+    });
+  });
+
+  describe('vehicleLabels', () => {
+    it('is empty before any trip exists', async () => {
+      expect(await vehicleTripRepository.vehicleLabels()).toEqual([]);
+    });
+
+    it('lists each car once, most recently used first', async () => {
+      await vehicleTripRepository.save({
+        ...trip('a', '2025-08-15', 100, 'Corolla'),
+        createdAt: '2025-08-15T00:00:00.000Z',
+      });
+      await vehicleTripRepository.save({
+        ...trip('b', '2025-09-01', 100, 'Hilux'),
+        createdAt: '2025-09-01T00:00:00.000Z',
+      });
+      await vehicleTripRepository.save({
+        ...trip('c', '2025-09-02', 100, 'Corolla'),
+        createdAt: '2025-09-02T00:00:00.000Z',
+      });
+
+      expect(await vehicleTripRepository.vehicleLabels()).toEqual(['Corolla', 'Hilux']);
+    });
+
+    it('spans financial years, because the same car is driven every year', async () => {
+      await vehicleTripRepository.save(trip('old', '2023-09-01', 100, 'Old faithful'));
+
+      expect(await vehicleTripRepository.vehicleLabels()).toEqual(['Old faithful']);
+    });
+
+    it('reaches a year that has trips but no receipts', async () => {
+      // The year selector unions receipt years with these. Without trip years, a
+      // year spent logging only mileage would be unreachable in the picker.
+      await vehicleTripRepository.save(trip('a', '2023-09-01', 100));
+      await vehicleTripRepository.save(trip('b', '2025-08-15', 100));
+
+      const years = await vehicleTripRepository.financialYearsWithTrips();
+
+      expect(years).toEqual([2025, 2023]);
+      expect(financialYearOptions(years, 2026)).toEqual([2026, 2025, 2023]);
+    });
+
+    it('drops a year once its only trip is deleted', async () => {
+      await vehicleTripRepository.save(trip('kept', '2025-08-15', 100));
+      await vehicleTripRepository.save(trip('binned', '2023-09-01', 100));
+      await vehicleTripRepository.softDelete('binned');
+
+      expect(await vehicleTripRepository.financialYearsWithTrips()).toEqual([2025]);
+    });
+
+    it('forgets a car whose only trip was deleted', async () => {
+      await vehicleTripRepository.save(trip('a', '2025-08-15', 100, 'Hilux'));
+      await vehicleTripRepository.save(trip('b', '2025-08-16', 100, 'Mistake'));
+      await vehicleTripRepository.softDelete('b');
+
+      expect(await vehicleTripRepository.vehicleLabels()).toEqual(['Hilux']);
     });
   });
 });
