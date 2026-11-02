@@ -196,6 +196,23 @@ local-only storage warning above belongs.
 
 ---
 
+### 🟡 The standard deduction assumes at least $1,000 of wages
+
+**Found:** 3 November 2026, implementing s 25-130.
+
+The standard deduction is the lesser of $1,000 and the year's assessable labour
+income. The app doesn't record income, so for someone who earned under $1,000 in
+wages the dashboard overstates it — and may recommend it when itemising was
+better.
+
+**Why it's accepted:** the audience is PAYG employees, almost all of whom earn
+well over $1,000 a year. The card says the deduction is smaller below $1,000 in
+wages rather than assuming.
+
+**How to close:** an optional income field, if real users turn out to need it.
+
+---
+
 ### 🔴 The 2026–27 WFH fixed rate is unpublished — a provisional 70c stands in
 
 **Found:** milestone 2. **Provisional value added:** milestone 6. Tracked in
@@ -208,6 +225,9 @@ automated fetches, so it has to be checked by hand.
 **Why it exists:** blocked on the ATO, not on us. The published field deliberately
 holds `null` rather than carrying last year's 70c forward, because a stale rate
 produces a confidently wrong deduction.
+
+**Re-checked 3 November 2026:** still no 2026–27 figure on any official source
+found. A pasted summary claimed it "remains 70c" but cited nothing; not acted on.
 
 **What changed in milestone 6:** so development isn't stalled, `ATO_RATES[2026]`
 now carries `provisional: { wfhCentsPerHour: 70 }` — the last published figure.
@@ -246,6 +266,23 @@ year.
 ---
 
 ## Closed
+
+### 🟠 The $300 card could contradict the standard deduction card
+
+**Found and closed:** 3 November 2026, branch `standard-deduction`.
+
+Under $1,000, the standard deduction card said no receipts were needed while the
+$300 card, once crossed, said in red that every expense needed written evidence.
+Both true — the evidence rule applies only to expenses actually claimed — but
+side by side they read as conflicting advice.
+
+**Closed by** `evidenceTestNote()`: while the standard deduction wins, the $300
+card adds that it only matters if you itemise (and to keep receipts anyway, in
+case expenses pass $1,000), and drops the red alarm. Once itemising wins the card
+is unchanged, since the evidence rule then applies in full. The $300 wording
+itself (§6) is untouched.
+
+---
 
 ### 🟠 `SqliteWfhLogRepository` and `SqliteVehicleTripRepository` had never executed
 

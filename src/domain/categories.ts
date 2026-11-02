@@ -40,6 +40,17 @@ export interface Category {
    */
   countsTowardSubstantiationThreshold: boolean;
   /**
+   * Whether this category's spend reduces the standard deduction — that is,
+   * counts as a work-related expense under ITAA 1997 s 25-130.
+   *
+   * A different scope from the $300 test above, so a separate flag. Car
+   * expenses count here (s 25-130 names Division 28), and so does
+   * allowance-covered travel. Association memberships are expressly
+   * disregarded, and gifts and tax-affairs costs aren't work expenses at all:
+   * those are claimed on top of the standard deduction rather than against it.
+   */
+  countsTowardStandardDeduction: boolean;
+  /**
    * Whether entries are receipts or a purpose-built log. `wfh` hours and
    * vehicle `trips` are calculated from logs, not from receipt amounts.
    */
@@ -56,6 +67,7 @@ export const CATEGORIES: readonly Category[] = [
     myTaxLabel: 'D1',
     // Car expenses sit outside the aggregate substantiation test.
     countsTowardSubstantiationThreshold: false,
+    countsTowardStandardDeduction: true,
     entryKind: 'trips',
     phase: 1,
     examples: 'Cents-per-km trips, parking, tolls',
@@ -71,6 +83,7 @@ export const CATEGORIES: readonly Category[] = [
     // case, so the category default is `true` and the exception is recorded
     // per receipt via `substantiationExemption`.
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Airfares, accommodation, meals away overnight',
@@ -80,6 +93,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Clothing & laundry',
     myTaxLabel: 'D3',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Uniforms, protective gear, laundry',
@@ -89,6 +103,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Self-education',
     myTaxLabel: 'D4',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Course fees, textbooks, student contributions',
@@ -100,6 +115,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Working from home',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'wfh',
     phase: 1,
     examples: 'Hours logged under the fixed-rate method',
@@ -109,6 +125,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Phone & internet',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Work portion of phone and data plans',
@@ -118,6 +135,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Tools & equipment',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Laptops, tools, office furniture',
@@ -127,6 +145,9 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Union fees & subscriptions',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    // s 25-130 disregards association memberships: claimed on top of the
+    // standard deduction, never against it.
+    countsTowardStandardDeduction: false,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Union dues, professional memberships',
@@ -136,6 +157,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Books & periodicals',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Trade journals, professional publications',
@@ -145,6 +167,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Seminars & conferences',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Registration, training courses',
@@ -154,6 +177,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Stationery & consumables',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Printer ink, paper, general supplies',
@@ -163,6 +187,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Other work-related',
     myTaxLabel: 'D5',
     countsTowardSubstantiationThreshold: true,
+    countsTowardStandardDeduction: true,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Catch-all so nothing goes unrecorded',
@@ -175,6 +200,8 @@ export const CATEGORIES: readonly Category[] = [
     myTaxLabel: 'D9',
     // Not a work expense; outside the work-related substantiation test.
     countsTowardSubstantiationThreshold: false,
+    // Division 30, not a work expense: claimed on top of the standard deduction.
+    countsTowardStandardDeduction: false,
     entryKind: 'receipt',
     phase: 1,
     examples: 'DGR-endorsed charities',
@@ -184,6 +211,8 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Managing tax affairs',
     myTaxLabel: 'D10',
     countsTowardSubstantiationThreshold: false,
+    // s 25-5, not a work expense: claimed on top of the standard deduction.
+    countsTowardStandardDeduction: false,
     entryKind: 'receipt',
     phase: 1,
     examples: 'Accountant fees, tax agent charges',
@@ -195,6 +224,8 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Low-value pool',
     myTaxLabel: 'D6',
     countsTowardSubstantiationThreshold: false,
+    // Subdivision 40-E; s 25-130 counts only 40-B and 40-D decline in value.
+    countsTowardStandardDeduction: false,
     entryKind: 'receipt',
     phase: 3,
     examples: 'Depreciating assets pooled below the write-off threshold',
@@ -204,6 +235,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Interest deductions',
     myTaxLabel: 'D7',
     countsTowardSubstantiationThreshold: false,
+    countsTowardStandardDeduction: false,
     entryKind: 'receipt',
     phase: 3,
     examples: 'Interest on investment borrowings',
@@ -213,6 +245,7 @@ export const CATEGORIES: readonly Category[] = [
     name: 'Dividend deductions',
     myTaxLabel: 'D8',
     countsTowardSubstantiationThreshold: false,
+    countsTowardStandardDeduction: false,
     entryKind: 'receipt',
     phase: 3,
     examples: 'Costs of earning dividend income',
@@ -229,4 +262,9 @@ export function categoryById(id: string): Category | null {
 /** Categories whose spend counts toward the aggregate substantiation threshold. */
 export function substantiationCategoryIds(): string[] {
   return ACTIVE_CATEGORIES.filter((c) => c.countsTowardSubstantiationThreshold).map((c) => c.id);
+}
+
+/** Categories whose spend counts against the standard deduction (s 25-130). */
+export function standardDeductionCategoryIds(): string[] {
+  return ACTIVE_CATEGORIES.filter((c) => c.countsTowardStandardDeduction).map((c) => c.id);
 }

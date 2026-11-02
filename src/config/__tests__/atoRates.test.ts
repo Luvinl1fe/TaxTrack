@@ -61,6 +61,19 @@ describe('ATO_RATES', () => {
   });
 });
 
+describe('standard deduction', () => {
+  it('is $1,000 from 2026–27, per ITAA 1997 s 25-130', () => {
+    expect(ATO_RATES[2026].standardDeductionCents).toBe(100_000);
+  });
+
+  it('did not exist before 2026–27', () => {
+    // Null means "there was no such deduction", so the dashboard offers no
+    // comparison for those years rather than one against a made-up figure.
+    expect(ATO_RATES[2024].standardDeductionCents).toBeNull();
+    expect(ATO_RATES[2025].standardDeductionCents).toBeNull();
+  });
+});
+
 describe('published rate values', () => {
   it('uses 88c/km for 2024–25 and 2025–26', () => {
     expect(ATO_RATES[2024].centsPerKm).toBe(88);

@@ -199,6 +199,7 @@ A year with a provisional rate is a 🔴 release gate, not a solved problem. Fin
 | Cents per km — cap | **5,000 km per car, per year** | ✅ Confirmed |
 | WFH fixed rate — 2024–25 & 2025–26 | **70c per work hour** | ✅ Confirmed |
 | WFH fixed rate — **2026–27** | — | ❌ **UNCONFIRMED — must verify before shipping** |
+| Standard deduction — **2026–27 onward** | **$1,000** for work-related expenses, automatic, no receipts (ITAA 1997 s 25-130) | ✅ Confirmed — **Treasury Laws Amendment (Tax Reform No. 1) Act 2026**, No. 49, assented 26 June 2026 |
 | No-receipt threshold | Written evidence not required if total work-related claims are **≤ $300** — but you must still be able to show how the claim was worked out | ✅ Confirmed, long-standing |
 
 **The 2026–27 WFH rate does not exist yet.** The ATO's own "Fixed rate method" page, checked against its *last updated 8 June 2026* revision, lists 70c for 2024–25 and 2025–26, 67c for 2022–23 and 2023–24, and 52c for 2020–21 and 2021–22 — and stops there. There is no 2026–27 figure, and that revision predates the start of the 2026–27 year on 1 July 2026.
@@ -244,6 +245,20 @@ Same figure, unrelated rules, different units — one sums receipts, the other t
 Three of the four are properties of the *individual expense*, not its category: the same flight counts or doesn't depending on whether an allowance covered it. So `Receipt.substantiationExemption` carries `'travel_allowance' | 'meal_allowance' | 'award_transport' | null`, and it overrides the category default. D9 gifts and D10 tax affairs are excluded as non-work expenses.
 
 Implemented in `src/domain/substantiation.ts`.
+
+### The $1,000 standard deduction — added 3 November 2026
+
+From 2026–27, s 25-130 gives every resident with labour income a $1,000 work-related deduction, applied automatically with no receipts. **It tops up rather than adds:** it is reduced dollar for dollar by the work expenses claimed, so the year's work-related deduction is the *larger* of the itemised total and $1,000, never the sum. Itemising only pays once expenses pass $1,000.
+
+| Counts against it | Claimed on top instead |
+| --- | --- |
+| Receipts in D1–D5 categories, including allowance-covered travel | Union and professional association fees (expressly disregarded) |
+| Cents-per-km car claims (Division 28 is named) | Gifts and donations (D9) |
+| WFH fixed-rate claims | Tax affairs (D10) |
+
+Scope is a per-category flag, `countsTowardStandardDeduction`, separate from the $300 test's flag because the two scopes differ (car is in this one and out of that one).
+
+The dashboard's first card answers "itemise or take the $1,000?" — `src/domain/standardDeduction.ts`. It is the one place receipts, car and WFH are added together, because s 25-130 adds them. **Not modelled:** the deduction is capped at assessable labour income, which the app doesn't record; the card says so.
 
 ### Disclaimer
 
@@ -344,4 +359,6 @@ UI gets manual testing on-device via Expo Go. Component and E2E tests are not wo
 2. **Monetisation** — carried over from the pitch: subscription vs one-off unlock, and how price-sensitive a casual PAYG employee is. Doesn't block Phase 1; free tier is all of Phase 1 either way.
 3. ~~**Category list**~~ — **Resolved.** 14 categories approved, D1–D10 mapping verified against the ATO's official label list. D5 is split eight ways (a UX choice, not an ATO rule) so category totals are usable. D6/D7/D8 are defined but marked `phase: 3` and filtered out, so enabling them later is a flag flip rather than a migration. See `src/domain/categories.ts`.
 4. **Known limitation — FY boundary across Australian timezones.** `currentFy()` uses the device's local date, and AU spans three hours. Within a few hours of midnight on 30 June / 1 July, two users in different states can land in different financial years. Accepted rather than engineered around: the device date is what the user sees on their lock screen, and the date is editable on every entry.
-5. **⚠️ UNVERIFIED — a $1,000 standard deduction for work-related expenses from 2026–27.** Multiple accounting commentaries claim one replaces itemised work-expense claims from the year we are building for. **Not confirmed against the ATO or Treasury, and nothing in the app assumes it.** If it holds it reaches the premise rather than the details: a taxpayer whose work expenses total under $1,000 has little reason to itemise receipts at all, which describes much of the PAYG audience in the pitch. It would reshape the WFH and vehicle calculators (§6), the $300 substantiation nudge (§6), and the validation checkpoint at milestone 7. **Verify from a primary source before designing around it** — an Act, a Treasury measure, or an ATO page, not a firm's blog post.
+5. ~~**A $1,000 standard deduction**~~ — **Resolved 3 November 2026: it is law.** ITAA 1997 s 25-130, inserted by the Treasury Laws Amendment (Tax Reform No. 1) Act 2026 (No. 49, Royal Assent 26 June 2026), from 2026–27. See §6. The concern below held: it reaches the premise, and the dashboard now leads with the comparison. Original note kept for the record:
+
+   **⚠️ UNVERIFIED — a $1,000 standard deduction for work-related expenses from 2026–27.** Multiple accounting commentaries claim one replaces itemised work-expense claims from the year we are building for. **Not confirmed against the ATO or Treasury, and nothing in the app assumes it.** If it holds it reaches the premise rather than the details: a taxpayer whose work expenses total under $1,000 has little reason to itemise receipts at all, which describes much of the PAYG audience in the pitch. It would reshape the WFH and vehicle calculators (§6), the $300 substantiation nudge (§6), and the validation checkpoint at milestone 7. **Verify from a primary source before designing around it** — an Act, a Treasury measure, or an ATO page, not a firm's blog post.

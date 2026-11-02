@@ -55,6 +55,19 @@ export interface FyRates {
    */
   immediateWriteOffThresholdCents: number;
   /**
+   * The standard deduction for work-related expenses (ITAA 1997 s 25-130),
+   * applied automatically with no receipts. `null` for years before it existed —
+   * a statement that there is no such deduction, not that a figure is missing.
+   *
+   * It tops up rather than adds: the $1,000 is reduced dollar for dollar by the
+   * work expenses claimed, so the year's work-related deduction is the larger of
+   * the two, never the sum. Itemising only helps once expenses pass it.
+   *
+   * Also capped at the year's assessable labour income, which the app doesn't
+   * record — see `standardDeduction.ts`.
+   */
+  standardDeductionCents: number | null;
+  /**
    * Stand-in values for rates the ATO hasn't published, so a calculator can be
    * built and tested before the real figure exists.
    *
@@ -98,6 +111,7 @@ export const ATO_RATES: Record<number, FyRates> = {
     kmCapPerCar: KM_CAP_PER_CAR,
     substantiationThresholdCents: SUBSTANTIATION_THRESHOLD_CENTS,
     immediateWriteOffThresholdCents: IMMEDIATE_WRITE_OFF_THRESHOLD_CENTS,
+    standardDeductionCents: null, // introduced from 2026–27
   },
   // 2025–26
   2025: {
@@ -106,6 +120,7 @@ export const ATO_RATES: Record<number, FyRates> = {
     kmCapPerCar: KM_CAP_PER_CAR,
     substantiationThresholdCents: SUBSTANTIATION_THRESHOLD_CENTS,
     immediateWriteOffThresholdCents: IMMEDIATE_WRITE_OFF_THRESHOLD_CENTS,
+    standardDeductionCents: null, // introduced from 2026–27
   },
   // 2026–27 — the year the app is being built for.
   2026: {
@@ -138,6 +153,11 @@ export const ATO_RATES: Record<number, FyRates> = {
     kmCapPerCar: KM_CAP_PER_CAR,
     substantiationThresholdCents: SUBSTANTIATION_THRESHOLD_CENTS,
     immediateWriteOffThresholdCents: IMMEDIATE_WRITE_OFF_THRESHOLD_CENTS,
+    // $1,000, ITAA 1997 s 25-130, inserted by Schedule 4 of the Treasury Laws
+    // Amendment (Tax Reform No. 1) Act 2026 (No. 49, 2026). Royal Assent 26 June
+    // 2026; Schedule 4 commenced 1 July 2026 and applies from the 2026–27 income
+    // year. Read from the Act as made on legislation.gov.au, 3 November 2026.
+    standardDeductionCents: 100_000,
   },
 };
 

@@ -24,6 +24,12 @@ import {
 } from '@/db/receiptRepository';
 import { categoryName } from '@/domain/receiptList';
 import {
+  compareWithStandardDeduction,
+  evidenceTestNote,
+  standardDeductionMessage,
+  type StandardDeductionComparison,
+} from '@/domain/standardDeduction';
+import {
   substantiationMessage,
   substantiationStatus,
   thresholdCentsForFy,
@@ -51,6 +57,7 @@ export default function Dashboard() {
   const [tripCount, setTripCount] = useState(0);
   const [wfh, setWfh] = useState<WfhCalculation | null>(null);
   const [logCount, setLogCount] = useState(0);
+  const [standard, setStandard] = useState<StandardDeductionComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -66,10 +73,26 @@ export default function Dashboard() {
       // Kept in its own card, never folded into the receipts total: the two are
       // computed from different records under different ATO rules, and a single
       // figure would invite someone to claim car costs twice.
-      setVehicle(calculateVehicleClaim(trips, fy));
+      const vehicleClaim = calculateVehicleClaim(trips, fy);
+      const wfhClaim = calculateWfhClaim(logs, fy);
+      setVehicle(vehicleClaim);
       setTripCount(trips.length);
-      setWfh(calculateWfhClaim(logs, fy));
+      setWfh(wfhClaim);
       setLogCount(logs.length);
+      // The one place the three claims *are* added up — because s 25-130 adds
+      // them up to decide whether itemising beats the standard deduction.
+      setStandard(
+        compareWithStandardDeduction(
+          {
+            receipts,
+            vehicle: vehicleClaim,
+            tripCount: trips.length,
+            wfh: wfhClaim,
+            logCount: logs.length,
+          },
+          fy,
+        ),
+      );
 
       // The threshold is a published figure and `substantiationStatus` throws
       // rather than assuming $300 for a year it has no rates for. A receipt
@@ -116,9 +139,16 @@ export default function Dashboard() {
       {totals === null ? (
         <ActivityIndicator style={styles.loading} />
       ) : receiptCount === 0 && tripCount === 0 && logCount === 0 ? (
-        <EmptyYear fy={fy} colors={colors} />
+        <>
+          <EmptyYear fy={fy} colors={colors} />
+          {standard !== null && <StandardDeductionCard comparison={standard} colors={colors} />}
+        </>
       ) : (
         <>
+          {/* First, because it answers the question the rest of the screen
+              feeds: is any of this worth claiming? */}
+          {standard !== null && <StandardDeductionCard comparison={standard} colors={colors} />}
+
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {/* "Receipts", not "Total claimed". Car trips are a separate claim
                 under separate rules, and one combined figure would read as
@@ -158,7 +188,7 @@ export default function Dashboard() {
             (status === null ? (
               <ThresholdUnavailable fy={fy} colors={colors} />
             ) : (
-              <EvidenceCard status={status} colors={colors} />
+              <EvidenceCard status={status} note={evidenceTestNote(standard)} colors={colors} />
             ))}
 
           {receiptCount > 0 && (
@@ -201,6 +231,95 @@ export default function Dashboard() {
 }
 
 /**
+ * Itemise, or take the standard deduction?
+ *
+ * Adds receipts, car and working-from-home claims together, which every other
+ * card on this screen deliberately avoids. Here it's correct: s 25-130 reduces
+ * the standard deduction by all three combined. The breakdown is shown so the
+ * sum isn't mistaken for a claim in its own right.
+ *
+ * The bar fills toward the standard deduction, the point past which itemising
+ * starts to pay.
+ */
+function StandardDeductionCard({
+  comparison,
+  colors,
+}: {
+  comparison: StandardDeductionComparison;
+  colors: Colors;
+}) {
+  const itemise = comparison.better === 'itemise';
+  const progress = Math.min(1, comparison.itemisedCents / comparison.standardCents);
+  const parts = [
+    { label: 'Receipts', cents: comparison.receiptsCents },
+    { label: 'Car & vehicle', cents: comparison.vehicleCents },
+    { label: 'Working from home', cents: comparison.wfhCents },
+  ].filter((part) => part.cents > 0);
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[styles.cardTitle, { color: colors.text }]}>
+        {formatCents(comparison.standardCents)} standard deduction
+      </Text>
+
+      {/* The verdict as the headline, not the arithmetic. */}
+      <View style={styles.evidenceHeading}>
+        <Ionicons
+          name={itemise ? 'receipt-outline' : 'checkmark-circle-outline'}
+          size={18}
+          color={colors.primary}
+        />
+        <Text style={[styles.evidenceTotal, { color: colors.text }]}>
+          {itemise ? 'Itemising gives you more' : 'The standard deduction gives you more'}
+        </Text>
+      </View>
+
+      <View style={[styles.track, { backgroundColor: colors.border }]}>
+        <View
+          style={[
+            styles.fill,
+            { backgroundColor: colors.primary, width: `${Math.round(progress * 100)}%` },
+          ]}
+        />
+      </View>
+
+      <Text style={[styles.evidenceMessage, { color: colors.text }]}>
+        {standardDeductionMessage(comparison)}
+      </Text>
+
+      {parts.length > 1 &&
+        parts.map((part) => (
+          <View key={part.label} style={styles.categoryRow}>
+            <Text style={[styles.categoryName, { color: colors.text }]}>{part.label}</Text>
+            <Text style={[styles.categoryAmount, { color: colors.text }]}>
+              {formatCents(part.cents)}
+            </Text>
+          </View>
+        ))}
+
+      {comparison.includesEstimate && (
+        <Text style={[styles.warning, { color: colors.notification }]}>
+          This includes an estimated working-from-home figure, so the answer could change once the
+          ATO publishes this year&apos;s rate.
+        </Text>
+      )}
+      {comparison.incomplete && (
+        <Text style={[styles.warning, { color: colors.notification }]}>
+          Some trips or hours can&apos;t be valued yet and aren&apos;t included, so your real total
+          is higher than this.
+        </Text>
+      )}
+
+      <Text style={[styles.note, { color: colors.text }]}>
+        Donations, union and professional fees, and tax agent costs aren&apos;t counted here —
+        they&apos;re claimed on top either way. If you earned less than{' '}
+        {formatCents(comparison.standardCents)} in wages, the standard deduction is smaller.
+      </Text>
+    </View>
+  );
+}
+
+/**
  * The $300 nudge.
  *
  * This is the aggregate substantiation test — written evidence — not the
@@ -211,9 +330,22 @@ export default function Dashboard() {
  * The wording comes from `substantiationMessage`, which never says "you can
  * claim $300 without receipts": the threshold governs evidence, not entitlement.
  */
-function EvidenceCard({ status, colors }: { status: SubstantiationStatus; colors: Colors }) {
+function EvidenceCard({
+  status,
+  note,
+  colors,
+}: {
+  status: SubstantiationStatus;
+  /** From `evidenceTestNote`: set while the standard deduction beats itemising. */
+  note: string | null;
+  colors: Colors;
+}) {
   const progress = Math.min(1, status.totalCents / status.thresholdCents);
-  const accent = status.crossed ? colors.notification : colors.primary;
+  // Not red while the standard deduction wins: an alarm about evidence for
+  // expenses the card above advises not claiming is the contradiction `note`
+  // exists to remove.
+  const alarming = status.crossed && note === null;
+  const accent = alarming ? colors.notification : colors.primary;
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -223,7 +355,7 @@ function EvidenceCard({ status, colors }: { status: SubstantiationStatus; colors
 
       <View style={styles.evidenceHeading}>
         <Ionicons
-          name={status.crossed ? 'alert-circle' : 'information-circle-outline'}
+          name={alarming ? 'alert-circle' : 'information-circle-outline'}
           size={18}
           color={accent}
         />
@@ -240,9 +372,13 @@ function EvidenceCard({ status, colors }: { status: SubstantiationStatus; colors
         />
       </View>
 
-      <Text style={[styles.evidenceMessage, { color: status.crossed ? accent : colors.text }]}>
+      <Text style={[styles.evidenceMessage, { color: alarming ? accent : colors.text }]}>
         {substantiationMessage(status)}
       </Text>
+
+      {note !== null && (
+        <Text style={[styles.evidenceMessage, { color: colors.text }]}>{note}</Text>
+      )}
 
       {status.excluded.length > 0 && (
         <Text style={[styles.note, { color: colors.text }]}>
